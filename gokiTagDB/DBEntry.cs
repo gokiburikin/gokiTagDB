@@ -44,9 +44,38 @@ namespace gokiTagDB
 
         public Bitmap Thumbnail
         {
-            get { return thumbnail; }
+            get {
+                return thumbnail;
+            }
             set { thumbnail = value; }
         }
+
+        private byte[] md5 = null;
+
+        private bool selected = false;
+
+        public bool Selected
+        {
+            get { return selected; }
+            set { selected = value; }
+        }
+
+        private bool hover = false;
+
+        public bool Hover
+        {
+            get { return hover; }
+            set { hover = value; }
+        }
+
+        private bool active = false;
+
+        public bool Active
+        {
+            get { return active; }
+            set { active = value; }
+        }
+
 
         public DBEntry(): this("", "", ""){}
 
@@ -59,9 +88,20 @@ namespace gokiTagDB
 
         public void generateThumbnail()
         {
-            if (frmMainForm.thumbnailData.ContainsKey(Location))
+            if (frmMainForm.thumbnailInfo.ContainsKey(Location))
             {
-                Thumbnail = frmMainForm.thumbnailData[Location].Bitmap;
+                using (FileStream fileStream = File.OpenRead(frmMainForm.thumbnailsPath))
+                {
+                    fileStream.Seek((int)frmMainForm.thumbnailInfo[Location].Index,SeekOrigin.Begin);
+                    byte[] data = new byte[(int)frmMainForm.thumbnailInfo[Location].Size];
+                    fileStream.Read(data, 0, data.Length);
+                    fileStream.Close();
+                    using (MemoryStream stream = new MemoryStream(data))
+                    {
+                        Bitmap bitmap = (Bitmap)Bitmap.FromStream(stream);
+                        thumbnail = bitmap;
+                    }
+                }
             }
             else if ( location != null && File.Exists(location))
             {
@@ -78,8 +118,8 @@ namespace gokiTagDB
                 {
                     float width = bitmap.Width;
                     float height = bitmap.Height;
-                    float xAspectRatio = width / 128;
-                    float yAspectRatio = height / 128;
+                    float xAspectRatio = width / frmMainForm.thumbnailWidth;
+                    float yAspectRatio = height / frmMainForm.thumbnailHeight;
                     if ( xAspectRatio > yAspectRatio )
                     {
                         width /= xAspectRatio;
@@ -91,22 +131,55 @@ namespace gokiTagDB
                         height /= yAspectRatio;
                     }
                     thumbnail = GokiPixels.resize(bitmap,width,height,0,System.Drawing.Drawing2D.InterpolationMode.Bilinear);
-                    if ( !frmMainForm.thumbnailData.ContainsKey(Location))
-                    {
-                        frmMainForm.thumbnailData.Add(Location, new BitmapDataSizeTuple(thumbnail.Width, thumbnail.Height, GokiPixels.getDataFromBitmap(thumbnail)));
-                    }
-                    else
-                    {
-                        frmMainForm.thumbnailData[Location] = new BitmapDataSizeTuple(thumbnail.Width, thumbnail.Height, GokiPixels.getDataFromBitmap(thumbnail));
-                    }
+                    
                     bitmap.Dispose();
                 }
+            }
+            if ( thumbnail == null)
+            {
+                thumbnail = Properties.Resources.missing_thumbnail;
+            }
+        }
+
+        public byte[] MD5
+        {
+            get
+            {
+                byte[] output = this.md5;
+                if (output == null)
+                {
+                    if (File.Exists(Location))
+                    {
+                        using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
+                        {
+                            using (FileStream fileStream = File.OpenRead(Location))
+                            {
+                                output = md5.ComputeHash(fileStream);
+                            }
+                        }
+                    }
+                }
+                return output;
+            }
+        }
+
+        public string MD5String
+        {
+            get
+            {
+                string output = "";
+                byte[] md5 = MD5;
+                if ( md5 != null )
+                {
+                    output = BitConverter.ToString(md5).Replace("-", "").ToLower();
+                }
+                return output;
             }
         }
 
         public byte[] toByteArray()
         {
-            int capacity = (name.Length + location.Length + tagString.Length)*sizeof(char) + sizeof(int)  * 3;
+            int capacity = (Name.Length + Location.Length + TagString.Length)*sizeof(char) + sizeof(int)  * 3;
             GokiBytesWriter writer = new GokiBytesWriter(capacity);
             writer.write( Name );
             writer.write( Location );
