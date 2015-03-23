@@ -1,6 +1,7 @@
 ﻿using GokiLibrary;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
@@ -9,64 +10,56 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Text.RegularExpressions;
 
-// TODO: Document, Organize
-// TODO: Auto-suggest
-// TODO: Consider whatever that weird parsing thing was for searching (spaces to underscores, separate with... spaces, sure)
+// TODO: Documentation
 // TODO: Tag categories (artist, character, copyright, default)
-// TODO: Negation operator
 
 namespace gokiTagDB
 {
     public partial class frmMainForm : Form
     {
+        
         public static int thumbnailWidth = 128;
         public static int thumbnailHeight = 128;
         public static int zoomIndex = 3;
         public static float[] zoomLevels = new float[7] { .25f, .50f, .75f, 1.0f, 1.25f, 1.5f, 2.0f };
-        public static string tagsPath = @".\tags.db";
-        public static string settingsPath = @".\settings.dat";
-        public static string databasePath = @".\entries.db";
-        public static string thumbnailsPath = @".\thumbnails.db";
-        public static string thumbnailsIndexPath = @".\thumbnails_index.db";
-        public static Dictionary<string, DBEntry> entries = new Dictionary<string, DBEntry>();
-        public static Dictionary<string, ThumbnailInfo> thumbnailInfo = new Dictionary<string, ThumbnailInfo>();
-        public static Dictionary<string, int> tagCounts = new Dictionary<string, int>();
-        public static List<DBEntry> thumbnailGenerationQueue = new List<DBEntry>();
-        public static int entriesPerPage = 20;
 
+        private string autoSuggestEntry = "";
         private int panelPadding = 2;
         private int entryMargin = 4;
-        private int entryPadding = 4;
-        private int borderSize = 3;
+        private int entryPadding = 2;
+        private int borderSize = 2;
         private int panelOffset = 0;
         private int activeIndex = -1;
         private int tagListEntryHeight = 16;
         private int tagListHoverIndex = -1;
         private int selectionMode = 0;
+        private bool controlDown = false;
+        private bool shiftDown = false;
+        private bool isFormClosing = false;
+        private long usedMemory = 0;
         private long allowedMemoryUsage = 100000000;
+        private Process process;
+        private DBEntry hoverEntry = null;
+        private ToolTip suggestTip = new ToolTip();
+        private bool isGenerationThreaded = true;
+        private bool thumbnailPanelDirty = false;
 
         private System.Windows.Forms.Timer generationTimer = new System.Windows.Forms.Timer();
         private System.Windows.Forms.Timer invalidateTimer = new System.Windows.Forms.Timer();
         private System.Windows.Forms.Timer processTimer = new System.Windows.Forms.Timer();
 
-        private List<DBEntry> queriedEntries = new List<DBEntry>();
+        private GokiBitmap marchingAntsBitmapOld;
+        private GokiBitmap marchingAntsBitmapNew;
+        private GokiBitmap marchingAntsBitmapSelectedActive;
 
-
-        private bool controlDown = false;
-        private bool shiftDown = false;
-        private bool thumbnailPanelDirty = false;
-
-        private string autoSuggestEntry = "";
-
-        private ToolTip suggestTip = new ToolTip();
-
-        private Process process;
-        private long usedMemory = 0;
-
-        private string title = "";
+        Thread generationThread;
+        CancellationTokenSource generationCancelTokenSource = new CancellationTokenSource();
+        public static BlockingCollection<DBEntry> thumbnailGenerationQueue = new BlockingCollection<DBEntry>();
 
         public frmMainForm()
         {
@@ -79,6 +72,13 @@ namespace gokiTagDB
             process = Process.GetCurrentProcess();
 
             AllowDrop = true;
+
+            foreach( string entry in Enum.GetNames(typeof(SortType)))
+            {
+                ToolStripMenuItem sortModeItem = new ToolStripMenuItem(entry);
+                sortModeItem.Click += sortModeItem_Click;
+                mnuSettingsSortMode.DropDownItems.Add(sortModeItem);
+            }
 
             btnSearch.Click += btnSearch_Click;
             btnClear.Click += btnClear_Click;
@@ -113,11 +113,23 @@ namespace gokiTagDB
                 mnuViewZoom.DropDownItems.Add(zoomLevelItem);
             }
 
-            generationTimer.Interval = 1000;
+            generationTimer.Interval = 35;
             generationTimer.Tick += generationTimer_Tick;
-            generationTimer.Start();
+            try
+            {
+                generationThread = new Thread(handleGenerationQueueTask);
+                generationThread.Start();
+            }
+            catch( Exception ex)
+            {
+                Console.WriteLine("Could not create task... defaulting to single thread.");
+                generationTimer.Interval = 35;
+                generationTimer.Tick += generationTimer_Tick;
+                generationTimer.Start();
+                isGenerationThreaded = false;
+            }
 
-            invalidateTimer.Interval = 50;
+            invalidateTimer.Interval = 35;
             invalidateTimer.Tick += invalidateTimer_Tick;
             invalidateTimer.Start();
 
@@ -129,18 +141,97 @@ namespace gokiTagDB
             KeyUp += frmMainForm_KeyUp;
             MouseWheel += mouseWheel;
             txtTagEditor.MouseWheel += mouseWheel;
-            DragDrop += dragDrog;
+            DragDrop += dragDrop;
             DragEnter += dragEnter;
             FormClosing += frmMainForm_FormClosing;
 
+            GokiTagDB.databaseStream = new MemoryStream();
+            GokiTagDB.thumbnailIndexStream = new MemoryStream();
+            GokiTagDB.thumbnailStream = new FileStream(GokiTagDB.thumbnailsPath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+
+            marchingAntsBitmapOld = new GokiBitmap(ThumbnailWidth/2, ThumbnailHeight/2);
+            marchingAntsBitmapNew = new GokiBitmap(ThumbnailWidth / 2, ThumbnailHeight / 2);
+            marchingAntsBitmapSelectedActive = new GokiBitmap(ThumbnailWidth / 2, ThumbnailHeight / 2);
+
+            marchingAntsBitmapOld.marchingAntsRectangle(0, 0, ThumbnailWidth / 2 - 1, ThumbnailHeight / 2 - 1, (int)(DateTime.Now.Millisecond / 1000f), Color.PowderBlue, Color.DodgerBlue);
+            marchingAntsBitmapNew.marchingAntsRectangle(0, 0, ThumbnailWidth / 2 - 1, ThumbnailHeight / 2 - 1, (int)(DateTime.Now.Millisecond / 1000f), Color.Gold, Color.DarkGoldenrod);
+            marchingAntsBitmapSelectedActive.marchingAntsRectangle(0, 0, ThumbnailWidth / 2 - 1, ThumbnailHeight / 2 - 1, (int)(DateTime.Now.Millisecond / 1000f), Color.DarkGreen, Color.DarkGoldenrod);
+
             updateMenuControls();
             updateTitle();
-            loadTags();
-            loadSettings();
-            loadDatabase();
-            loadThumbnails();
+            SaveAndLoad.loadTags();
+            SaveAndLoad.loadSettings();
+            SaveAndLoad.loadDatabase();
+            SaveAndLoad.loadThumbnails();
             updatePanelScrollbar();
         }
+
+        #region Generation
+
+        void handleGenerationQueueTask()
+        {
+            while (!generationCancelTokenSource.Token.IsCancellationRequested)
+            {
+                handleGenerationQueue();
+            }
+        }
+
+        void handleGenerationQueue()
+        {
+            try
+            {
+                double totalTime = 0;
+                DateTime startTime = DateTime.Now;
+
+                while ( totalTime < 100 && !isFormClosing)
+                {
+                    DBEntry entry = thumbnailGenerationQueue.Take(generationCancelTokenSource.Token);
+                    if (entry != null)
+                    {
+                        entry.generateThumbnail(GokiTagDB.thumbnailStream);
+                        try
+                        {
+                            SaveAndLoad.addThumbnailToDatabase(entry);
+                        }
+                        catch( IOException ex)
+                        {
+                            break;
+                        }
+                        totalTime += (DateTime.Now - startTime).TotalMilliseconds;
+                    }
+                }
+
+                queueRedraw();
+                if (!isGenerationThreaded)
+                {
+                    if (thumbnailGenerationQueue.Count == 0)
+                    {
+                        generationTimer.Stop();
+                    }
+                    else
+                    {
+                        generationTimer.Start();
+                    }
+                }
+                else
+                {
+                    if (thumbnailGenerationQueue.Count == 0)
+                    {
+                        // generationTask.Wait(250);
+                    }
+                    else
+                    {
+                      //  generationTask.Wait(25);
+                    }
+                }
+            }
+            catch( Exception ex)
+            {
+                Console.WriteLine("Issue generating thumbnail: " + ex.Message);
+            }
+        }
+
+        #endregion Generation
 
         #region Properties
 
@@ -200,10 +291,7 @@ namespace gokiTagDB
             return control.FindForm().PointToClient(control.Parent.PointToScreen(control.Location));
         }
 
-        void txtTagEditor_Click(object sender, EventArgs e)
-        {
-            txtTagEditor.SelectAll();
-        }
+        
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
@@ -262,8 +350,13 @@ namespace gokiTagDB
             {
                 scrPanelVertical.Value = Math.Min(Math.Max(scrPanelVertical.Minimum, scrPanelVertical.Value - e.Delta), Math.Max(scrPanelVertical.Maximum - scrPanelVertical.LargeChange, scrPanelVertical.Minimum));
                 panelOffset = scrPanelVertical.Value;
-                thumbnailPanelDirty = true;
+                queueRedraw();
             }
+        }
+
+        void txtTagEditor_Click(object sender, EventArgs e)
+        {
+            txtTagEditor.SelectAll();
         }
 
         private void mnuSettingsSelectionModeExplorer_Click(object sender, EventArgs e)
@@ -285,10 +378,10 @@ namespace gokiTagDB
 
         private void saveToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            saveTags();
-            saveSettings();
-            saveDatabase();
-            saveThumbnails();
+            SaveAndLoad.saveTags();
+            SaveAndLoad.saveDatabase();
+            SaveAndLoad.saveThumbnails();
+            SaveAndLoad.saveSettings();
         }
 
         private void exitToolStripMenuItem_Click(object sender, EventArgs e)
@@ -309,17 +402,17 @@ namespace gokiTagDB
 
         private void btnClear_Click(object sender, EventArgs e)
         {
-            queriedEntries.Clear();
-            tagCounts.Clear();
+            GokiTagDB.queriedEntries.Clear();
+            GokiTagDB.tagCounts.Clear();
             txtSearch.Text = "";
             pnlTagList.Invalidate();
-            thumbnailPanelDirty = true;
+            queueRedraw();
         }
 
         private void btnUpdateTags_Click(object sender, EventArgs e)
         {
             int amountUpdated = 0;
-            foreach (DBEntry entry in queriedEntries)
+            foreach (DBEntry entry in GokiTagDB.queriedEntries)
             {
                 if (entry.Selected)
                 {
@@ -330,7 +423,8 @@ namespace gokiTagDB
                             Tags.addTag(checkTag, null);
                         }
                     }
-                    entries[entry.Location].TagString = txtTagEditor.Text.Trim();
+
+                    SaveAndLoad.editEntry(entry, new DBEntry(entry.Location, txtTagEditor.Text.Trim()));
                     amountUpdated++;
                 }
             }
@@ -365,11 +459,11 @@ namespace gokiTagDB
         void btnRemoveTags_Click(object sender, EventArgs e)
         {
             int amountUpdated = 0;
-            foreach (DBEntry entry in queriedEntries)
+            foreach (DBEntry entry in GokiTagDB.queriedEntries)
             {
                 if (entry.Selected)
                 {
-                    List<string> existingTags = entries[entry.Location].TagString.Split(' ').ToList();
+                    List<string> existingTags = GokiTagDB.entries[entry.Location].TagString.Split(' ').ToList();
                     foreach (string checkTag in txtTagEditor.Text.Split(' '))
                     {
                         if (existingTags.Contains(checkTag))
@@ -377,7 +471,7 @@ namespace gokiTagDB
                             existingTags.Remove(checkTag);
                         }
                     }
-                    entries[entry.Location].TagString = String.Join(" ", existingTags);
+                    SaveAndLoad.editEntry(entry, new DBEntry(entry.Location, String.Join(" ", existingTags).Trim()));
                     amountUpdated++;
                 }
             }
@@ -389,11 +483,11 @@ namespace gokiTagDB
         void btnAddTags_Click(object sender, EventArgs e)
         {
             int amountUpdated = 0;
-            foreach (DBEntry entry in queriedEntries)
+            foreach (DBEntry entry in GokiTagDB.queriedEntries)
             {
                 if (entry.Selected)
                 {
-                    List<string> existingTags = entries[entry.Location].TagString.Split(' ').ToList();
+                    List<string> existingTags = GokiTagDB.entries[entry.Location].TagString.Split(' ').ToList();
                     foreach (string checkTag in txtTagEditor.Text.Split(' '))
                     {
                         if (!existingTags.Contains(checkTag))
@@ -405,7 +499,7 @@ namespace gokiTagDB
                             }
                         }
                     }
-                    entries[entry.Location].TagString = String.Join(" ", existingTags);
+                    SaveAndLoad.editEntry(entry, new DBEntry(entry.Location, String.Join(" ",existingTags)));
                     amountUpdated++;
                 }
             }
@@ -424,40 +518,38 @@ namespace gokiTagDB
         {
             controlDown = e.Control;
             shiftDown = e.Shift;
-            if ( e.KeyCode == Keys.Delete)
+            if ( e.KeyCode == Keys.Delete && !txtTagEditor.Focused && !txtSearch.Focused )
             {
                 List<DBEntry> selectedEntries = getSelectedEntries();
-                int amountRemoved = 0;
-                foreach( DBEntry entry in selectedEntries)
-                {
-                    entries.Remove(entry.Location);
-                    queriedEntries.Remove(entry);
-                    amountRemoved++;
-                }
-                thumbnailPanelDirty = true;
-                if ( amountRemoved > 0)
-                {
-                    lblStatus2.Text = amountRemoved + " file(s) removed from the database.";
-                }
+                SaveAndLoad.removeEntriesFromDatabase(selectedEntries);
+                queueRedraw();
+                lblStatus4.Text = selectedEntries.Count + " file(s) removed from the database.";
             }
         }
 
         void pnlThumbnailView_MouseMove(object sender, MouseEventArgs e)
         {
-            foreach (DBEntry entry in queriedEntries)
-            {
-                entry.Hover = false;
-            }
             if (e.X <= (ThumbnailWidth + entryMargin + entryPadding * 2) * MaxColumns - panelPadding * 2)
             {
                 int index = getPanelIndex(e.X, e.Y);
-                if (queriedEntries.Count > index)
+                if (index < GokiTagDB.queriedEntries.Count && index >= 0)
                 {
-                    queriedEntries[index].Hover = true;
-                    lblStatus3.Text = queriedEntries[index].Location;
+                    hoverEntry = GokiTagDB.queriedEntries[index];
+                }
+                else
+                {
+                    hoverEntry = null;
+                }
+                if (GokiTagDB.queriedEntries.Count > index)
+                {
+                    lblStatus3.Text = GokiTagDB.queriedEntries[index].Location;
                 }
             }
-            thumbnailPanelDirty = true;
+            else
+            {
+                hoverEntry = null;
+            }
+            queueRedraw();
         }
 
         void pnlThumbnailView_MouseDown(object sender, MouseEventArgs e)
@@ -465,31 +557,34 @@ namespace gokiTagDB
             if (e.X <= (ThumbnailWidth + entryMargin) * MaxColumns - panelPadding * 2)
             {
                 int index = getPanelIndex(e.X, e.Y);
-                if (selectionMode == 0 && (!controlDown && !shiftDown))
+                if (index < GokiTagDB.queriedEntries.Count)
                 {
-                    deselectAllSelectedEntries();
-                    activeIndex = index;
-                }
-                if (selectionMode == 1 || (!shiftDown || activeIndex == -1))
-                {
-                    if (queriedEntries.Count > index)
+                    if (selectionMode == 0 && (!controlDown && !shiftDown))
                     {
-                        queriedEntries[index].Selected = !queriedEntries[index].Selected;
+                        deselectAllSelectedEntries();
+                        activeIndex = index;
                     }
-                }
-                else if (shiftDown && activeIndex >= 0)
-                {
-                    int startIndex = activeIndex;
-                    if (index < activeIndex)
+                    if (selectionMode == 1 || (!shiftDown || activeIndex == -1))
                     {
-                        int tempIndex = index;
-                        index = startIndex;
-                        startIndex = tempIndex;
+                        if (GokiTagDB.queriedEntries.Count > index)
+                        {
+                            GokiTagDB.queriedEntries[index].Selected = !GokiTagDB.queriedEntries[index].Selected;
+                        }
                     }
-                    deselectAllSelectedEntries();
-                    for (int i = startIndex; i <= index; i++)
+                    else if (shiftDown && activeIndex >= 0)
                     {
-                        queriedEntries[i].Selected = true;
+                        int startIndex = activeIndex;
+                        if (index < activeIndex)
+                        {
+                            int tempIndex = index;
+                            index = startIndex;
+                            startIndex = tempIndex;
+                        }
+                        deselectAllSelectedEntries();
+                        for (int i = startIndex; i <= index; i++)
+                        {
+                            GokiTagDB.queriedEntries[i].Selected = true;
+                        }
                     }
                 }
             }
@@ -498,22 +593,82 @@ namespace gokiTagDB
                 deselectAllSelectedEntries();
             }
             updateTagCounts();
-            lblStatus2.Text = getSelectedEntries().Count + " file(s) selected.";
-            thumbnailPanelDirty = true;
+            lblStatus4.Text = getSelectedEntries().Count + " file(s) selected.";
+            queueRedraw();
             pnlTagList.Invalidate();
         }
 
         void pnlThumbnailView_MouseDoubleClick(object sender, MouseEventArgs e)
         {
             int index = getPanelIndex(e.X, e.Y);
-            if (File.Exists(queriedEntries[index].Location) && queriedEntries.Count > index)
+            if (File.Exists(GokiTagDB.queriedEntries[index].Location) && GokiTagDB.queriedEntries.Count > index)
             {
-                Process.Start(queriedEntries[index].Location);
+                Process.Start(GokiTagDB.queriedEntries[index].Location);
             }
             else
             {
                 MessageBox.Show("File not found.", "File missing");
             }
+        }
+
+        private void mnuOrganizeMoveSelectedFiles_Click(object sender, EventArgs e)
+        {
+            if (getSelectedEntries().Count > 0)
+            {
+                // TODO: FIND A BETTER WAY TO REPLACE THIS
+                FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
+                if (folderBrowserDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    moveSelectedEntries(folderBrowserDialog.SelectedPath);
+                }
+            }
+            else
+            {
+                MessageBox.Show("No files selected.", "Move failed");
+            }
+        }
+
+
+
+        private void randomlyTagToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            foreach (DBEntry entry in getSelectedEntries())
+            {
+                SaveAndLoad.editEntry(entry, new DBEntry(entry.Location, GokiRandom.randomIntPositive(10000).ToString()));
+            }
+        }
+
+        private void fileFilterToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            frmFileFilter fileFilterForm = new frmFileFilter();
+            fileFilterForm.ShowDialog();
+        }
+
+        private void deleteSelectedFilesToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (getSelectedEntries().Count > 0)
+            {
+                deleteSelectedEntries();
+            }
+            else
+            {
+                MessageBox.Show("No files selected.", "Delete failed");
+            }
+        }
+
+        void sortModeItem_Click(object sender, EventArgs e)
+        {
+            string entry = ((ToolStripMenuItem)sender).Text;
+            GokiTagDB.sortType = (SortType)Enum.Parse(typeof(SortType), entry);
+        }
+
+        private void allToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            foreach (DBEntry entry in GokiTagDB.queriedEntries)
+            {
+                entry.Selected = true;
+            }
+            queueRedraw();
         }
 
         #endregion Mouse and Keyboard
@@ -561,14 +716,10 @@ namespace gokiTagDB
                         Control control = (Control)sender;
                         Point locationOnForm = control.FindForm().PointToClient(control.Parent.PointToScreen(control.Location));
                         locationOnForm.X += control.Width;
-                        string tooltip = "Best Guess:\n" + matches[0].Key + " (" + matches[0].Value + ")\n\nCandidates:\n";
-                        for (int i = 1; i < Math.Min(5, matches.Count); i++)
-                        {
-                            tooltip += String.Format("{0} ({1})\n", matches[i].Key, matches[i].Value);
-                        }
+                        string message = matches[0].Key + " (" + matches[0].Value + ")";
                         if (matches.Count > 0)
                         {
-                            suggestTip.Show(tooltip, this, locationOnForm);
+                            lblAutoSuggest.Text = message;
                             autoSuggestEntry = matches[0].Key;
                             isShown = true;
                         }
@@ -598,24 +749,29 @@ namespace gokiTagDB
         void scrPanelVertical_Scroll(object sender, ScrollEventArgs e)
         {
             panelOffset = e.NewValue;
-            thumbnailPanelDirty = true;
+            queueRedraw();
         }
 
         void pnlThumbnailView_Resize(object sender, EventArgs e)
         {
-            thumbnailPanelDirty = true;
+            queueRedraw();
             updatePanelScrollbar();
         }
 
         void frmMainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            this.Hide();
+           // this.Hide();
             try
             {
-                saveTags();
-                saveSettings();
-                saveDatabase();
-                saveThumbnails();
+                generationCancelTokenSource.Cancel();
+                SaveAndLoad.saveTags();
+                SaveAndLoad.saveDatabase();
+                SaveAndLoad.saveThumbnails();
+                SaveAndLoad.saveSettings();
+                GokiTagDB.thumbnailIndexStream.Close();
+                GokiTagDB.thumbnailStream.Close();
+                GokiTagDB.databaseStream.Close();
+               // saveThumbnails();
             }
             catch (Exception ex)
             {
@@ -628,6 +784,18 @@ namespace gokiTagDB
         #endregion Controls
 
         #region Methods
+
+        private void deleteSelectedEntries()
+        {
+            foreach (DBEntry entry in getSelectedEntries())
+            {
+                if (File.Exists(entry.Location))
+                {
+                    File.Delete(entry.Location);
+                    SaveAndLoad.removeEntriesFromDatabase(getSelectedEntries());
+                }
+            }
+        }
 
         void updateTitle()
         {
@@ -650,21 +818,28 @@ namespace gokiTagDB
 
         void invalidateTimer_Tick(object sender, EventArgs e)
         {
-            invalidateTimer.Stop();
-            if (thumbnailPanelDirty)
+            if ( thumbnailPanelDirty )
             {
                 pnlThumbnailView.Invalidate();
                 thumbnailPanelDirty = false;
+                lblStatus2.Text = String.Format("{0:N0} thumbnails in queue", thumbnailGenerationQueue.Count);
+
             }
-            invalidateTimer.Start();
+        }
+
+        void queueRedraw()
+        {
+            thumbnailPanelDirty = true;
         }
 
         void generationTimer_Tick(object sender, EventArgs e)
         {
             generationTimer.Stop();
-            handleGenerationQueue();
-            thumbnailPanelDirty = true;
-            generationTimer.Start();
+            if (!isGenerationThreaded)
+            {
+                handleGenerationQueue();
+                queueRedraw();
+            }
         }
 
         int scoreStringCompare(string target, string entry)
@@ -710,6 +885,11 @@ namespace gokiTagDB
             return score;
         }
 
+        int stringMaximumScore(string target)
+        {
+            return target.Length * 2 - 1 + target.Length * target.Length;
+        }
+
         void updateMenuControls()
         {
             mnuSettingsSelectionModeExplorer.Checked = selectionMode == 0;
@@ -718,9 +898,9 @@ namespace gokiTagDB
 
         void updateTagCounts()
         {
-            tagCounts.Clear();
+            GokiTagDB.tagCounts.Clear();
 
-            List<DBEntry> entryPool = queriedEntries;
+            List<DBEntry> entryPool = GokiTagDB.queriedEntries;
             List<DBEntry> selectedEntries = getSelectedEntries();
 
             if (selectedEntries.Count > 0)
@@ -733,13 +913,13 @@ namespace gokiTagDB
                 string[] tags = entry.TagString.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string tag in tags)
                 {
-                    if (tagCounts.ContainsKey(tag))
+                    if (GokiTagDB.tagCounts.ContainsKey(tag))
                     {
-                        tagCounts[tag]++;
+                        GokiTagDB.tagCounts[tag]++;
                     }
                     else
                     {
-                        tagCounts.Add(tag, 1);
+                        GokiTagDB.tagCounts.Add(tag, 1);
                     }
                 }
             }
@@ -752,13 +932,13 @@ namespace gokiTagDB
             scrTagListVertical.SmallChange = tagListEntryHeight;
             scrTagListVertical.LargeChange = tagListEntryHeight * 5;
             scrTagListVertical.Minimum = 0;
-            scrTagListVertical.Maximum = Math.Max(tagCounts.Count * tagListEntryHeight + scrTagListVertical.LargeChange - pnlTagList.Height, scrTagListVertical.Minimum);
+            scrTagListVertical.Maximum = Math.Max(GokiTagDB.tagCounts.Count * tagListEntryHeight + scrTagListVertical.LargeChange - pnlTagList.Height, scrTagListVertical.Minimum);
             scrTagListVertical.Value = scrTagListVertical.Minimum;
         }
 
         List<KeyValuePair<string, int>> getSortedTagList()
         {
-            List<KeyValuePair<string, int>> pairs = tagCounts.ToList();
+            List<KeyValuePair<string, int>> pairs = GokiTagDB.tagCounts.ToList();
             pairs.Sort((firstPair, nextPair) =>
             {
                 return -(firstPair.Value.CompareTo(nextPair.Value) * 10 - firstPair.Key.CompareTo(nextPair.Key));
@@ -775,7 +955,7 @@ namespace gokiTagDB
         List<DBEntry> getSelectedEntries()
         {
             List<DBEntry> selectedEntries = new List<DBEntry>();
-            foreach (DBEntry entry in queriedEntries)
+            foreach (DBEntry entry in GokiTagDB.queriedEntries)
             {
                 if (entry.Selected)
                 {
@@ -787,7 +967,7 @@ namespace gokiTagDB
 
         void deselectAllSelectedEntries()
         {
-            foreach (DBEntry entry in queriedEntries)
+            foreach (DBEntry entry in GokiTagDB.queriedEntries)
             {
                 entry.Selected = false;
             }
@@ -795,7 +975,8 @@ namespace gokiTagDB
 
         void updatePanelScrollbar()
         {
-            int totalHeight = (int)Math.Ceiling(queriedEntries.Count / (float)MaxColumns) * (ThumbnailHeight + entryMargin + entryPadding * 2) + panelPadding * 2;
+            int totalHeight = (int)Math.Ceiling(GokiTagDB.queriedEntries.Count / (float)MaxColumns) * (ThumbnailHeight + entryMargin + entryPadding * 2) + panelPadding * 2;
+            double oldPercentage = scrPanelVertical.Value / (double)scrPanelVertical.Maximum;
             if (totalHeight > 1)
             {
                 scrPanelVertical.Minimum = 0;
@@ -812,27 +993,43 @@ namespace gokiTagDB
                 scrPanelVertical.LargeChange = 0;
                 scrPanelVertical.Enabled = false;
             }
+            scrPanelVertical.Value = (int)(scrPanelVertical.Maximum * oldPercentage);
+            panelOffset = scrPanelVertical.Value;
         }
 
         void moveSelectedEntries(string folderPath)
         {
+            int errors = 0;
             foreach ( DBEntry entry in getSelectedEntries())
             {
-                int errors = 0;
                 try
                 {
-                    string newFilePath = folderPath +@"\"+ Path.GetFileName(entry.Location);
-                    File.Move(entry.Location, newFilePath);
-                    entry.Location = newFilePath;
+                    String newFilePath = folderPath + @"\" + Path.GetFileName(entry.Location);
+                    if (!File.Exists(newFilePath))
+                    {
+                        File.Move(entry.Location, newFilePath);
+                        GokiTagDB.thumbnailInfo[entry.Location].Location = newFilePath;
+                        GokiTagDB.entries.Remove(entry.Location);
+                        entry.Location = newFilePath;
+                        GokiTagDB.entries.Add(newFilePath, entry);
+                    }
+                    
                 }
                 catch( Exception ex)
                 {
                     errors++;
                 }
-                if ( errors > 0 )
-                {
-                    MessageBox.Show("Error moving " + errors + " file(s).");
-                }
+            }
+            GokiTagDB.thumbnailIndexStream.Seek(0, SeekOrigin.Begin);
+            GokiTagDB.thumbnailIndexStream.SetLength(0);
+
+            foreach (ThumbnailInfo info in GokiTagDB.thumbnailInfo.Values)
+            {
+                SaveAndLoad.addThumbnailIndexToDatabase(info);
+            }
+            if (errors > 0)
+            {
+                MessageBox.Show("Error moving " + errors + " file(s).");
             }
         }
 
@@ -867,7 +1064,7 @@ namespace gokiTagDB
 
         void pnlThumbnailView_Paint(object sender, PaintEventArgs e)
         {
-            if (queriedEntries.Count > 0)
+            if (GokiTagDB.queriedEntries.Count > 0)
             {
                 int x = panelPadding;
                 int y = panelPadding;
@@ -878,17 +1075,25 @@ namespace gokiTagDB
                     pen.Width = borderSize;
                     using (SolidBrush brush = new SolidBrush(Color.Salmon))
                     {
-                        foreach (DBEntry entry in queriedEntries)
+                        foreach (DBEntry entry in GokiTagDB.queriedEntries)
                         {
                             pen.Color = Color.LightGray;
                             Rectangle rectangle = new Rectangle(x, y - panelOffset, ThumbnailWidth + entryPadding * 2, ThumbnailHeight + entryPadding * 2);
                             if (rectangle.IntersectsWith(new Rectangle(0, 0, pnlThumbnailView.Width, pnlThumbnailView.Height)))
                             {
                                 bool highlighted = false;
-                                if (queriedEntries.Count > activeIndex && activeIndex >= 0 && queriedEntries[activeIndex] == entry)
+                                if (GokiTagDB.queriedEntries.Count > activeIndex && activeIndex >= 0 && GokiTagDB.queriedEntries[activeIndex] == entry)
                                 {
-                                    pen.Color = Color.DarkGoldenrod;
-                                    brush.Color = Color.Gold;
+                                    if (entry.Selected)
+                                    {
+                                        pen.Color = Color.DarkCyan;
+                                        brush.Color = Color.Cyan;
+                                    }
+                                    else
+                                    {
+                                        pen.Color = Color.DarkGoldenrod;
+                                        brush.Color = Color.Gold;
+                                    }
                                     highlighted = true;
                                 }
                                 else if (entry.Selected)
@@ -897,7 +1102,7 @@ namespace gokiTagDB
                                     brush.Color = Color.MediumSpringGreen;
                                     highlighted = true;
                                 }
-                                else if (entry.Hover)
+                                else if (entry == hoverEntry)
                                 {
                                     pen.Color = Color.DarkSlateBlue;
                                     brush.Color = Color.LightBlue;
@@ -907,39 +1112,69 @@ namespace gokiTagDB
                                 if (entry.Thumbnail == null && !thumbnailGenerationQueue.Contains(entry))
                                 {
                                     thumbnailGenerationQueue.Add(entry);
+                                    if (!isGenerationThreaded && !generationTimer.Enabled)
+                                    {
+                                        generationTimer.Start();
+                                    }
                                 }
 
                                 if (highlighted)
                                 {
                                     e.Graphics.FillRectangle(brush, rectangle);
                                 }
+                                
                                 if (entry.Thumbnail != null)
                                 {
-                                    e.Graphics.DrawImage(entry.Thumbnail, x + (ThumbnailWidth - entry.Thumbnail.Width * Zoom) / 2 + entryPadding, y + (ThumbnailHeight - entry.Thumbnail.Height * Zoom) / 2 - panelOffset + entryPadding, entry.Thumbnail.Width * Zoom, entry.Thumbnail.Height * Zoom);
+                                    try{
+
+                                    
+                                        e.Graphics.DrawImage(entry.Thumbnail, x + (ThumbnailWidth - entry.Thumbnail.Width * Zoom) / 2 + entryPadding, y + (ThumbnailHeight - entry.Thumbnail.Height * Zoom) / 2 - panelOffset + entryPadding, entry.Thumbnail.Width * Zoom, entry.Thumbnail.Height * Zoom);
+                                    }
+                                    catch (InvalidOperationException ex)
+                                    {
+
+                                    }
                                 }
                                 else
                                 {
                                     // Static
                                     //e.Graphics.DrawImage(GokiPixels.fastGenerateStatic(ThumbnailWidth,ThumbnailHeight,2,255), x, y - panelOffset, ThumbnailWidth, ThumbnailHeight);
                                     // Outline
-                                    e.Graphics.DrawImage(GokiPixels.marchingAntsRectangle(ThumbnailWidth-1, ThumbnailHeight-1, Color.Yellow,Color.DarkGoldenrod,(int)(DateTime.Now.Millisecond /1000f * thumbnailWidth)), x + entryPadding, y + entryPadding - panelOffset, ThumbnailWidth, ThumbnailHeight);
+                                    if (!GokiTagDB.thumbnailInfo.ContainsKey(entry.Location))
+                                    {
+                                        e.Graphics.DrawImage(marchingAntsBitmapNew.Bitmap, x + entryPadding, y + entryPadding - panelOffset, ThumbnailWidth, ThumbnailHeight);
+                                    }
+                                    else
+                                    {
+                                        e.Graphics.DrawImage(marchingAntsBitmapOld.Bitmap, x + entryPadding, y + entryPadding - panelOffset, ThumbnailWidth, ThumbnailHeight);
+                                    }
                                 }
                                 if (highlighted)
                                 {
                                     e.Graphics.DrawRectangle(pen, GokiUtility.getRectangleContracted(rectangle, 0, 0, -borderSize+2, -borderSize+2));
                                 }
+                              
                             }
                             else
                             {
-                                try
+                                if (usedMemory > allowedMemoryUsage)
                                 {
-                                    if (usedMemory > allowedMemoryUsage)
+                                    if (entry.Thumbnail != null)
                                     {
-                                        usedMemory -= ThumbnailWidth * ThumbnailHeight * 4;
+                                        entry.Thumbnail.Dispose();
                                         entry.Thumbnail = null;
+                                        usedMemory -= ThumbnailWidth * ThumbnailHeight * 4;
                                     }
                                 }
-                                catch(PlatformNotSupportedException ex)
+                                try
+                                {
+                                    if (thumbnailGenerationQueue.Contains(entry))
+                                    {
+                                        DBEntry selectEntry = entry;
+                                        thumbnailGenerationQueue.TryTake(out selectEntry);
+                                    }
+                                }
+                                catch(Exception ex)
                                 {
 
                                 }
@@ -957,28 +1192,22 @@ namespace gokiTagDB
                     }
                 }
             }
+            else
+            {
+                using (Font font = new Font("Tahoma", 18))
+                {
+                    using ( SolidBrush brush = new SolidBrush(Color.Gray))
+                    {
+                        StringFormat format = new StringFormat();
+                        format.Alignment = StringAlignment.Center;
+                        format.LineAlignment = StringAlignment.Center;
+                        e.Graphics.DrawString(String.Format("{0:N0} files in the database\ndrag and drop files here", GokiTagDB.entries.Count), font, brush, pnlThumbnailView.ClientRectangle, format);
+                    }
+                }
+            }
         }
 
         #endregion Paint
-
-        void handleGenerationQueue()
-        {
-            double totalTime = 0;
-            DateTime startTime = DateTime.Now;
-
-            while (thumbnailGenerationQueue.Count > 0 && totalTime < 100)
-            {
-                int count = thumbnailGenerationQueue.Count;
-                thumbnailGenerationQueue[count-1].generateThumbnail();
-                thumbnailGenerationQueue.RemoveAt(count-1);
-                totalTime += (DateTime.Now - startTime).TotalMilliseconds;
-            }
-
-            if (thumbnailGenerationQueue.Count == 0)
-            {
-                generationTimer.Interval = 50;
-            }
-        }
 
         #region Drag and Drop
 
@@ -990,41 +1219,40 @@ namespace gokiTagDB
             }
         }
 
-        void dragDrog(object sender, DragEventArgs e)
+        void dragDrop(object sender, DragEventArgs e)
         {
             List<string> files = ((string[])e.Data.GetData(DataFormats.FileDrop)).ToList();
             int added = 0;
             int skipped = 0;
-            int failed = 0;
+            Regex fileFilterRegex = new Regex(GokiTagDB.fileFilter);
             for (int i = 0; i < files.Count; i++)
             {
                 string file = files[i];
                 try
                 {
-                    if (!entries.ContainsKey(file))
+                    //FileAttributes fileAttributes = File.GetAttributes(file);
+                    if (Directory.Exists(file))
                     {
-
-                        FileAttributes fileAttributes = File.GetAttributes(file);
-                        if (fileAttributes == FileAttributes.Directory)
+                        IEnumerable<string> subfiles = Directory.EnumerateFiles(file, "*", SearchOption.AllDirectories);
+                        foreach (string subfile in subfiles)
                         {
-                            List<string> subfiles = Directory.EnumerateFiles(file).ToList();
-                            foreach (string subfile in subfiles)
+                            files.Add(subfile);
+                        }
+                    }
+                    else
+                    {
+                        if (!GokiTagDB.entries.ContainsKey(file))
+                        {
+                            string extension = Path.GetExtension(file);
+                            if (fileFilterRegex.IsMatch(extension))
                             {
-                                files.Add(subfile);
+                                added++;
+                                SaveAndLoad.addEntryToDatabase( new DBEntry(file, null));
                             }
                         }
                         else
                         {
-                            if (!entries.ContainsKey(file))
-                            {
-                                added++;
-                                entries.Add(file, new DBEntry(Path.GetFileNameWithoutExtension(file), file, null));
-                            }
-                            else
-                            {
-                                skipped++;
-                            }
-
+                            skipped++;
                         }
                     }
                 }
@@ -1038,7 +1266,8 @@ namespace gokiTagDB
             {
                 message += "\n " + skipped + "file(s) skipped.";
             }
-            MessageBox.Show(message);
+            lblStatus4.Text = message;
+            btnSearch_Click(null, null);
         }
 
         #endregion Drag and Drop
@@ -1051,7 +1280,7 @@ namespace gokiTagDB
 
             if (txtSearch.Text.Trim().Length == 0)
             {
-                queriedEntries = entries.Values.ToList();
+                GokiTagDB.queriedEntries = GokiTagDB.entries.Values.ToList();
             }
             else
             {
@@ -1060,9 +1289,9 @@ namespace gokiTagDB
 
                 foreach (string tag in tags)
                 {
-                    if (tag.Substring(0, 2).Equals("?:"))
+                    if (tag.Substring(0, 1).Equals("?"))
                     {
-                        if (tag.Substring(2, 5).ToLower().Equals("tags,"))
+                        if (tag.Substring(1, 5).ToLower().Equals("tags,"))
                         {
                             int.TryParse(tag.Substring(7), out filterTagCount);
                         }
@@ -1081,8 +1310,8 @@ namespace gokiTagDB
                 }
 
                 List<DBEntry> entryPool = new List<DBEntry>();
-                entryPool.AddRange(entries.Values);
-                queriedEntries = new List<DBEntry>();
+                entryPool.AddRange(GokiTagDB.entries.Values);
+                GokiTagDB.queriedEntries = new List<DBEntry>();
                 foreach (DBEntry entry in entryPool)
                 {
                     string formattedEntryTagString = entry.TagString.Trim().Replace("\r\n", " ").Replace("\n", " ");
@@ -1114,11 +1343,46 @@ namespace gokiTagDB
                     }
                     if (passed)
                     {
-                        queriedEntries.Add(entry);
+                        GokiTagDB.queriedEntries.Add(entry);
                     }
                 }
             }
-            lblStatus.Text = queriedEntries.Count + " result(s).";
+            if (GokiTagDB.sortType == SortType.Location)
+            {
+                GokiTagDB.queriedEntries.Sort((entryA, entryB) =>
+                {
+                    return entryA.Location.CompareTo(entryB.Location);
+                });
+            }
+            else if (GokiTagDB.sortType == SortType.Size)
+            {
+                GokiTagDB.queriedEntries.Sort((entryA, entryB) =>
+                {
+                    return entryA.FileSize.CompareTo(entryB.FileSize);
+                });
+            }
+            else if (GokiTagDB.sortType == SortType.Extension)
+            {
+                GokiTagDB.queriedEntries.Sort((entryA, entryB) =>
+                {
+                    return entryA.FileExtension.CompareTo(entryB.FileExtension);
+                });
+            }
+            else if (GokiTagDB.sortType == SortType.DateCreated)
+            {
+                GokiTagDB.queriedEntries.Sort((entryA, entryB) =>
+                {
+                    return entryA.CreationDate.CompareTo(entryB.CreationDate);
+                });
+            }
+            else if (GokiTagDB.sortType == SortType.DateModified)
+            {
+                GokiTagDB.queriedEntries.Sort((entryA, entryB) =>
+                {
+                    return entryA.ModifiedDate.CompareTo(entryB.ModifiedDate);
+                });
+            }
+            lblStatus.Text = GokiTagDB.queriedEntries.Count + " result(s).";
             panelOffset = 0;
             scrPanelVertical.Value = 0;
             activeIndex = -1;
@@ -1127,248 +1391,17 @@ namespace gokiTagDB
             updateTagListScrollbar();
             updatePanelScrollbar();
             updateTagCounts();
-            thumbnailPanelDirty = true;
+            queueRedraw();
             pnlTagList.Invalidate();
         }
 
         #       endregion Search
 
-        #region Save and Load
-
-        private void saveSettings()
+        private void tagsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            try
-            {
-                AutoSizeGokiBytesWriter writer = new AutoSizeGokiBytesWriter();
-                writer.write(entriesPerPage);
-                File.WriteAllBytes(settingsPath, GokiUtility.getCompressedByteArray(writer.Data));
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Could not save settings.\n" + ex.Message);
-            }
+            frmTagEdit tagEditForm = new frmTagEdit();
+            tagEditForm.ShowDialog();
         }
 
-        private void loadSettings()
-        {
-            if (File.Exists(settingsPath))
-            {
-                try
-                {
-                    GokiBytesReader reader = new GokiBytesReader(GokiUtility.getDecompressedByteArray(File.ReadAllBytes(settingsPath)));
-                    entriesPerPage = reader.readInt();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Could not load settings.\n" + ex.Message);
-                }
-            }
-        }
-
-        private void saveTags()
-        {
-            try
-            {
-                File.WriteAllBytes(tagsPath, Tags.toByteArray());
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Could not save tag database.\n" + ex.Message);
-            }
-        }
-
-        private void loadTags()
-        {
-            try
-            {
-                if (File.Exists(tagsPath))
-                {
-                    Tags.loadFromByteArray(File.ReadAllBytes(tagsPath));
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Could not load tag database.\n" + ex.Message);
-            }
-        }
-
-        private void saveDatabase()
-        {
-            try
-            {
-                AutoSizeGokiBytesWriter writer = new AutoSizeGokiBytesWriter();
-                writer.write(entries.Values.Count);
-                foreach (DBEntry entry in entries.Values.ToList())
-                {
-                    byte[] data = entry.toByteArray();
-                    writer.writeInt(data.Length);
-                    writer.write(data);
-                }
-                File.WriteAllBytes(databasePath, GokiUtility.getCompressedByteArray(writer.Data));
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Could not save database.\n" + ex.Message);
-            }
-        }
-        private void loadDatabase()
-        {
-            if (File.Exists(databasePath))
-            {
-                try
-                {
-                    string fullTagString = "";
-                    GokiBytesReader reader = new GokiBytesReader(GokiUtility.getDecompressedByteArray(File.ReadAllBytes(databasePath)));
-                    entries.Clear();
-                    int count = reader.readInt();
-                    for (int i = 0; i < count; i++)
-                    {
-                        byte[] data = new byte[reader.readInt()];
-                        DBEntry entry = DBEntry.fromByteArray(reader.readByteArray(data));
-                        fullTagString += entry.TagString + " ";
-                        entries.Add(entry.Location, entry);
-                    }
-
-                    string[] allTags = fullTagString.Split(' ');
-                    foreach ( string tag in allTags)
-                    {
-                        if (!Tags.tags.ContainsKey(tag))
-                        {
-                            Tags.addTag(tag,null);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Could not load database.\n" + ex.Message);
-                }
-            }
-        }
-
-        private void saveThumbnails()
-        {
-            try
-            {
-                List<string> currentLocations = new List<string>();
-                if (File.Exists(thumbnailsIndexPath))
-                {
-                    GokiBytesReader indexReader = new GokiBytesReader(File.ReadAllBytes(thumbnailsIndexPath));
-                    while (!indexReader.EOF)
-                    {
-                        currentLocations.Add(indexReader.readString());
-                        indexReader.readInt();
-                        indexReader.readInt();
-                    }
-                }
-
-                AutoSizeGokiBytesWriter indexWriter = new AutoSizeGokiBytesWriter();
-                if (File.Exists(thumbnailsIndexPath))
-                {
-                    indexWriter.write(File.ReadAllBytes(thumbnailsIndexPath));
-                }
-                AutoSizeGokiBytesWriter thumbnailWriter = new AutoSizeGokiBytesWriter();
-                if (File.Exists(thumbnailsPath))
-                {
-                    thumbnailWriter.write(File.ReadAllBytes(thumbnailsPath));
-                }
-                foreach (DBEntry entry in entries.Values)
-                {
-                    if (!currentLocations.Contains(entry.Location) && entry.Thumbnail != null)
-                    {
-                        using (MemoryStream memoryStream = new MemoryStream())
-                        {
-                            entry.Thumbnail.Save(memoryStream, ImageFormat.Png);
-                            byte[] thumbnailData = memoryStream.ToArray();
-
-                            indexWriter.write(entry.Location);
-                            indexWriter.write(thumbnailWriter.Index);
-                            indexWriter.write(thumbnailData.Length);
-                            thumbnailWriter.write(thumbnailData);
-                        }
-                    }
-                }
-                File.WriteAllBytes(thumbnailsIndexPath, indexWriter.Data);
-                File.WriteAllBytes(thumbnailsPath, thumbnailWriter.Data);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Could not save thumbnails.\n" + ex.Message);
-            }
-        }
-
-        private void loadThumbnails()
-        {
-            if (File.Exists(thumbnailsIndexPath) && File.Exists(thumbnailsPath))
-            {
-                try
-                {
-                    GokiBytesReader reader = new GokiBytesReader(File.ReadAllBytes(thumbnailsIndexPath));
-                    thumbnailInfo.Clear();
-                    while (!reader.EOF)
-                    {
-                        string location = reader.readString();
-                        int index = reader.readInt();
-                        int size = reader.readInt();
-                        thumbnailInfo.Add(location, new ThumbnailInfo(location, index, size));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Could not load thumbnails.\n" + ex.Message);
-                }
-            }
-        }
-
-        #endregion Save and Load
-
-        private void mnuOrganizeMoveSelectedFiles_Click(object sender, EventArgs e)
-        {
-            if (getSelectedEntries().Count > 0)
-            {
-                FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
-                if (folderBrowserDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                {
-                    moveSelectedEntries(folderBrowserDialog.SelectedPath);
-                }
-            }
-            else
-            {
-                MessageBox.Show("No files selected.", "Move failed");
-            }
-        }
-
-        private void cleanThumbnailDatabaseToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            if ( MessageBox.Show("This will search through the thumbnail database to clean up any issues such as missing files. This can take some time.\n\nContinue?", "Confirmation", MessageBoxButtons.OKCancel) == System.Windows.Forms.DialogResult.OK)
-            {
-                cleanThumbnailDatabase();
-            }
-        }
-
-        private void cleanThumbnailDatabase()
-        {
-            int missingFiles = 0;
-            foreach (KeyValuePair<string, ThumbnailInfo> info in thumbnailInfo)
-            {
-                if ( !File.Exists(info.Key))
-                {
-                   /* using (FileStream indexStream = File.OpenWrite(thumbnailsIndexPath))
-                    {
-                        using (FileStream thumbnailsStream = File.Open(thumbnailsPath, FileMode.Open,FileAccess.ReadWrite))
-                        {
-                            byte[] data = new byte[thumbnailsStream.Length - info.Value.Size];
-                            thumbnailsStream.Read(data,0,(int)info.Value.Index);
-                            thumbnailsStream.Seek(info.Value.Size, SeekOrigin.Current);
-                            thumbnailsStream.Read(data, (int)info.Value.Index, data.Length - (int)info.Value.Index);
-                            thumbnailsStream.Seek(0, SeekOrigin.Begin);
-                            thumbnailsStream.SetLength(data.Length);
-                            thumbnailsStream.Write(data, 0, data.Length);
-                        }
-                    }*/
-                    missingFiles++;
-                }
-            }
-            Console.WriteLine(missingFiles + " missing file(s).");
-        }
     }
 }

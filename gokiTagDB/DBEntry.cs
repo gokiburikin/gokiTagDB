@@ -11,19 +11,60 @@ namespace gokiTagDB
 {
     public class DBEntry
     {
-        private string name;
-
-        public string Name
-        {
-            get { return name; }
-            set { name = value; }
-        }
         private string location;
 
         public string Location
         {
             get { return location; }
             set { location = value; }
+        }
+
+        public string FileExtension
+        {
+            get
+            {
+                return Path.GetExtension(Location);
+            }
+        }
+
+        private long fileSize = 0;
+
+        public long FileSize
+        {
+            get { return fileSize; }
+            set { fileSize = value; }
+        }
+
+        public DateTime CreationDate
+        {
+            get
+            {
+                DateTime creationDate = DateTime.MinValue;
+                try
+                {
+                    creationDate = new FileInfo(Location).CreationTime;
+                }
+                catch (Exception ex)
+                {
+                }
+                return creationDate;
+            }
+        }
+
+        public DateTime ModifiedDate
+        {
+            get
+            {
+                DateTime modifiedDate = DateTime.MinValue;
+                try
+                {
+                    modifiedDate = new FileInfo(Location).LastWriteTime;
+                }
+                catch (Exception ex)
+                {
+                }
+                return modifiedDate;
+            }
         }
 
         private string tagString;
@@ -60,14 +101,6 @@ namespace gokiTagDB
             set { selected = value; }
         }
 
-        private bool hover = false;
-
-        public bool Hover
-        {
-            get { return hover; }
-            set { hover = value; }
-        }
-
         private bool active = false;
 
         public bool Active
@@ -76,51 +109,46 @@ namespace gokiTagDB
             set { active = value; }
         }
 
+        private long index = -1;
 
-        public DBEntry(): this("", "", ""){}
-
-        public DBEntry(string name, string location, string tagString)
+        public long Index
         {
-            Name = name;
+            get { return index; }
+            set { index = value; }
+        }
+
+
+        public DBEntry(): this("", ""){}
+
+        public DBEntry(string location, string tagString)
+        {
             Location = location;
             TagString = tagString;
         }
 
-        public void generateThumbnail()
+        public void generateThumbnail(FileStream thumbnailStream)
         {
-            if (frmMainForm.thumbnailInfo.ContainsKey(Location))
+            if (GokiTagDB.thumbnailInfo.ContainsKey(Location))
             {
-                using (FileStream fileStream = File.OpenRead(frmMainForm.thumbnailsPath))
+                thumbnailStream.Seek((int)GokiTagDB.thumbnailInfo[Location].ImageIndex, SeekOrigin.Begin);
+                byte[] data = new byte[(int)GokiTagDB.thumbnailInfo[Location].Size];
+                thumbnailStream.Read(data, 0, data.Length);
+                using (MemoryStream stream = new MemoryStream(data))
                 {
-                    fileStream.Seek((int)frmMainForm.thumbnailInfo[Location].Index,SeekOrigin.Begin);
-                    byte[] data = new byte[(int)frmMainForm.thumbnailInfo[Location].Size];
-                    fileStream.Read(data, 0, data.Length);
-                    fileStream.Close();
-                    using (MemoryStream stream = new MemoryStream(data))
-                    {
-                        Bitmap bitmap = (Bitmap)Bitmap.FromStream(stream);
-                        thumbnail = bitmap;
-                    }
+                    Bitmap bitmap = (Bitmap)Bitmap.FromStream(stream);
+                    thumbnail = bitmap;
                 }
             }
-            else if ( location != null && File.Exists(location))
+            else if (location != null && File.Exists(location))
             {
-                Bitmap bitmap = null;
                 try
                 {
-                    bitmap = (Bitmap)Image.FromFile(location);
-                }
-                catch(Exception ex)
-                {
-                    bitmap = Properties.Resources.missing_thumbnail;
-                }
-                if ( bitmap != null )
-                {
-                    float width = bitmap.Width;
-                    float height = bitmap.Height;
+                    Image original = Image.FromFile(location);
+                    float width = original.Width;
+                    float height = original.Height;
                     float xAspectRatio = width / frmMainForm.thumbnailWidth;
                     float yAspectRatio = height / frmMainForm.thumbnailHeight;
-                    if ( xAspectRatio > yAspectRatio )
+                    if (xAspectRatio > yAspectRatio)
                     {
                         width /= xAspectRatio;
                         height /= xAspectRatio;
@@ -130,9 +158,13 @@ namespace gokiTagDB
                         width /= yAspectRatio;
                         height /= yAspectRatio;
                     }
-                    thumbnail = GokiPixels.resize(bitmap,width,height,0,System.Drawing.Drawing2D.InterpolationMode.Bilinear);
-                    
-                    bitmap.Dispose();
+                    thumbnail = new Bitmap(original, (int)width, (int)height);
+                    original.Dispose();
+                    original = null;
+                }
+                catch (Exception ex)
+                {
+
                 }
             }
             if ( thumbnail == null)
@@ -177,24 +209,28 @@ namespace gokiTagDB
             }
         }
 
+        public int Length
+        {
+            get
+            {
+                return (Location.Length + TagString.Length) * sizeof(char) + sizeof(int) * 2;
+            }
+        }
+
         public byte[] toByteArray()
         {
-            int capacity = (Name.Length + Location.Length + TagString.Length)*sizeof(char) + sizeof(int)  * 3;
-            GokiBytesWriter writer = new GokiBytesWriter(capacity);
-            writer.write( Name );
+            GokiBytesWriter writer = new GokiBytesWriter(Length);
             writer.write( Location );
             writer.write( TagString );
-            
             return writer.data;
         }
 
         public static DBEntry fromByteArray( byte[] data )
         {
             GokiBytesReader reader = new GokiBytesReader(data);
-            string name = reader.readString();
             string location = reader.readString();
             string tagString = reader.readString();
-            return new DBEntry(name, location, tagString);
+            return new DBEntry( location, tagString);
         }
     }
 }

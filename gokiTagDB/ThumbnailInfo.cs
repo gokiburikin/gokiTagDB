@@ -16,12 +16,21 @@ namespace gokiTagDB
             get { return location; }
             set { location = value; }
         }
-        private long index;
 
-        public long Index
+        private long indexIndex;
+
+        public long IndexIndex
         {
-            get { return index; }
-            set { index = value; }
+            get { return indexIndex; }
+            set { indexIndex = value; }
+        }
+
+        private long imageIndex;
+
+        public long ImageIndex
+        {
+            get { return imageIndex; }
+            set { imageIndex = value; }
         }
         private long size;
 
@@ -31,19 +40,27 @@ namespace gokiTagDB
             set { size = value; }
         }
 
-        public ThumbnailInfo(string location, long index, long size)
+        public ThumbnailInfo(string location, long indexIndex, long imageIndex, long size)
         {
             Location = location;
-            Index = index;
+            IndexIndex = indexIndex;
+            ImageIndex = imageIndex;
             Size = size;
+        }
+
+        public long Length
+        {
+            get
+            {
+                return sizeof(char) * Location.Length + sizeof(int) + sizeof(long) * 2;
+            }
         }
 
         public byte[] toByteArray()
         {
-            long capacity = sizeof(char) * Location.Length + sizeof(int) + sizeof(long) * 3;
-            GokiBytesWriter writer = new GokiBytesWriter(capacity);
+            GokiBytesWriter writer = new GokiBytesWriter(Length);
             writer.write(Location);
-            writer.write(Index);
+            writer.write(ImageIndex);
             writer.write(Size);
             return writer.data;
         }
@@ -51,7 +68,7 @@ namespace gokiTagDB
         public static ThumbnailInfo fromByteArray(byte[] data)
         {
             GokiBytesReader reader = new GokiBytesReader(data);
-            return new ThumbnailInfo(reader.readString(), reader.readLong(), reader.readLong());
+            return new ThumbnailInfo(reader.readString(), -1, reader.readLong(), reader.readLong());
         }
     }
 }

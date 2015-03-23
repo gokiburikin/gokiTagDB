@@ -11,12 +11,13 @@ namespace gokiTagDB
     public class Tags
     {
         public static Dictionary<string, string> tags = new Dictionary<string, string>();
-        public static Dictionary<string, TagCategory> categories = new Dictionary<string, TagCategory>();
+        public static Dictionary<string, Color> categories = new Dictionary<string, Color>();
+        public static List<List<string>> aliasGroups = new List<List<string>>();
 
         public static void addTag(string tag, string category)
         {
             tag = tag.ToLower();
-            if ( !tags.ContainsKey(tag))
+            if ( tag.Length > 0 && !tags.ContainsKey(tag))
             {
                 if ( category == null || category.Length == 0)
                 {
@@ -30,7 +31,7 @@ namespace gokiTagDB
                 tags.Add(tag, category);
                 if ( !categories.ContainsKey(category))
                 {
-                    categories.Add(category, new TagCategory());
+                    categories.Add(category, Color.Black);
                 }
             }
         }
@@ -48,7 +49,7 @@ namespace gokiTagDB
             category = category.ToLower();
             if ( !categories.ContainsKey(category))
             {
-                categories.Add(category, new TagCategory(color));
+                categories.Add(category, color);
             }
         }
 
@@ -64,7 +65,7 @@ namespace gokiTagDB
         {
             if ( categories.ContainsKey(category))
             {
-                categories[category].Color = color;
+                categories[category] = color;
             }
         }
 
@@ -78,10 +79,10 @@ namespace gokiTagDB
                 writer.write(tag.Value);
             }
             writer.write(categories.Count);
-            foreach( KeyValuePair<string,TagCategory> category in categories)
+            foreach( KeyValuePair<string, Color> category in categories)
             {
                 writer.write(category.Key);
-                writer.write(category.Value.Color);
+                writer.write(category.Value);
             }
             return writer.Data;
         }
@@ -92,7 +93,7 @@ namespace gokiTagDB
             Tags.tags.Clear();
             Tags.categories.Clear();
             int tags = reader.readInt();
-            for( int i = 0;i  < tags; i++ )
+            for( int i = 0; i < tags; i++ )
             {
                 Tags.addTag(reader.readString(), reader.readString());
             }
@@ -102,26 +103,11 @@ namespace gokiTagDB
                 Tags.addCategory(reader.readString(), reader.readColor());
             }
         }
-    }
 
-    public class TagCategory
-    {
-        private Color color = Color.Black;
-
-        public Color Color
+        public  static void addAliasGroup( List<string> group )
         {
-            get { return color; }
-            set { color = value; }
-        }
-
-        public TagCategory() : this(Color.Black)
-        {
-
-        }
-
-        public TagCategory(Color color)
-        {
-            Color = color;
+            aliasGroups.Add(group);
         }
     }
+
 }

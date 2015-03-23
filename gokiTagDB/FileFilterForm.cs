@@ -5,35 +5,31 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace gokiTagDB
 {
-    public partial class frmEntriesPerPage : Form
+    public partial class frmFileFilter : Form
     {
-        public frmEntriesPerPage()
+        public frmFileFilter()
         {
             InitializeComponent();
-            Load += EntriesPerPageForm_Load;
+            txtFilter.Text = GokiTagDB.fileFilter;
             btnOk.Click += btnOk_Click;
             btnCancel.Click += btnCancel_Click;
         }
 
         void btnCancel_Click(object sender, EventArgs e)
         {
-            Close();
+            DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.Close();
         }
 
         void btnOk_Click(object sender, EventArgs e)
         {
-            GokiTagDB.entriesPerPage = (int)numEntries.Value;
-            Close();
-        }
-
-        void EntriesPerPageForm_Load(object sender, EventArgs e)
-        {
-            numEntries.Value = (decimal)GokiTagDB.entriesPerPage;
+            DialogResult = System.Windows.Forms.DialogResult.OK;
+            GokiTagDB.fileFilter = txtFilter.Text;
+            this.Close();
         }
     }
 }
