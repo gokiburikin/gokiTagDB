@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
+using Newtonsoft.Json;
 
 namespace gokiTagDB
 {
@@ -15,10 +16,7 @@ namespace gokiTagDB
         {
             try
             {
-                AutoSizeGokiBytesWriter writer = new AutoSizeGokiBytesWriter();
-                writer.write(GokiTagDB.entriesPerPage);
-                writer.write(GokiTagDB.fileFilter);
-                File.WriteAllBytes(GokiTagDB.settingsPath, GokiUtility.getCompressedByteArray(writer.Data));
+                File.WriteAllText(GokiTagDB.settingsPath, JsonConvert.SerializeObject(GokiTagDB.settings,Formatting.Indented));
             }
             catch (Exception ex)
             {
@@ -32,9 +30,7 @@ namespace gokiTagDB
             {
                 try
                 {
-                    GokiBytesReader reader = new GokiBytesReader(GokiUtility.getDecompressedByteArray(File.ReadAllBytes(GokiTagDB.settingsPath)));
-                    GokiTagDB.entriesPerPage = reader.readInt();
-                    GokiTagDB.fileFilter = reader.readString();
+                    GokiTagDB.settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText(GokiTagDB.settingsPath));
                 }
                 catch (Exception ex)
                 {
@@ -80,7 +76,7 @@ namespace gokiTagDB
         }
         public static void editEntry(DBEntry entry, DBEntry newEntry)
         {
-            if (GokiTagDB.entries.ContainsKey(entry.Location))
+            if (GokiTagDB.entries.ContainsKey(entry.FilePath))
             {
                 //byte[] dataBefore = new byte[entry.Index];
                 byte[] dataAfter = new byte[GokiTagDB.databaseStream.Length - entry.Index - entry.Length];
@@ -91,7 +87,7 @@ namespace gokiTagDB
                 GokiTagDB.databaseStream.Read(dataAfter, 0, dataAfter.Length);
                 GokiTagDB.databaseStream.Seek(entry.Index, SeekOrigin.Begin);
                 AutoSizeGokiBytesWriter writer = new AutoSizeGokiBytesWriter();
-                writer.write(newEntry.Location);
+                writer.write(newEntry.FilePath);
                 writer.write(newEntry.TagString);
                 GokiTagDB.databaseStream.Write(writer.Data, 0, writer.Data.Length);
 
@@ -116,7 +112,7 @@ namespace gokiTagDB
             // Fastest method is indeed just rewriting the entire file... of course
             foreach (DBEntry entry in removalEntries)
             {
-                GokiTagDB.entries.Remove(entry.Location);
+                GokiTagDB.entries.Remove(entry.FilePath);
                 if (GokiTagDB.queriedEntries.Contains(entry))
                 {
                     GokiTagDB.queriedEntries.Remove(entry);
@@ -152,12 +148,12 @@ namespace gokiTagDB
                             int index = reader.Index;
                             DBEntry entry = new DBEntry(reader.readString(), reader.readString());
                             entry.Index = index;
-                            entry.FileSize = new FileInfo(entry.Location).Length;
+                            entry.FileSize = new FileInfo(entry.FilePath).Length;
                             if (entry.TagString.Length > 0 && fullTagString.IndexOf(entry.TagString) == -1)
                             {
                                 fullTagString += entry.TagString + " ";
                             }
-                            GokiTagDB.entries.Add(entry.Location, entry);
+                            GokiTagDB.entries.Add(entry.FilePath, entry);
                         }
                         catch (Exception ex)
                         {
@@ -231,13 +227,13 @@ namespace gokiTagDB
 
         public static void addEntryToDatabase(DBEntry entry)
         {
-            if (!GokiTagDB.entries.ContainsKey(entry.Location))
+            if (!GokiTagDB.entries.ContainsKey(entry.FilePath))
             {
                 GokiTagDB.databaseStream.Seek(0, SeekOrigin.End);
                 entry.Index = GokiTagDB.databaseStream.Position;
                 byte[] data = entry.toByteArray();
                 GokiTagDB.databaseStream.Write(data, 0, data.Length);
-                GokiTagDB.entries.Add(entry.Location, entry);
+                GokiTagDB.entries.Add(entry.FilePath, entry);
             }
         }
 
@@ -249,7 +245,7 @@ namespace gokiTagDB
             {
                 entry.Index = GokiTagDB.databaseStream.Position;
                 AutoSizeGokiBytesWriter writer = new AutoSizeGokiBytesWriter();
-                writer.write(entry.Location);
+                writer.write(entry.FilePath);
                 writer.write(entry.TagString);
                 GokiTagDB.databaseStream.Write(writer.Data, 0, writer.Data.Length);
             }
@@ -264,28 +260,52 @@ namespace gokiTagDB
 
         public static void addThumbnailToDatabase(DBEntry entry)
         {
-
-            if (!GokiTagDB.thumbnailInfo.ContainsKey(entry.Location))
+            try
             {
-                using (MemoryStream memoryStream = new MemoryStream())
+                if (!GokiTagDB.thumbnailInfo.ContainsKey(entry.FilePath))
                 {
-                    if (entry.Thumbnail == null)
+                    using (MemoryStream memoryStream = new MemoryStream())
                     {
-                        entry.generateThumbnail(GokiTagDB.thumbnailStream);
+                        if (entry.Thumbnail == null)
+                        {
+                            entry.generateThumbnail(GokiTagDB.thumbnailStream);
+                        }
+                        entry.Thumbnail.Save(memoryStream, ImageFormat.Jpeg);
+                        byte[] thumbnailData = memoryStream.ToArray();
+
+                        GokiTagDB.thumbnailIndexStream.Seek(0, SeekOrigin.End);
+                        GokiTagDB.thumbnailStream.Seek(0, SeekOrigin.End);
+
+                        ThumbnailInfo info = new ThumbnailInfo(entry.FilePath, GokiTagDB.thumbnailIndexStream.Position, GokiTagDB.thumbnailStream.Position, thumbnailData.Length);
+                        byte[] thumbnailInfoData = info.toByteArray();
+                        GokiTagDB.thumbnailIndexStream.Write(info.toByteArray(), 0, thumbnailInfoData.Length);
+                        GokiTagDB.thumbnailStream.Write(thumbnailData, 0, thumbnailData.Length);
+
+                        GokiTagDB.thumbnailInfo.Add(entry.FilePath, info);
                     }
-                    entry.Thumbnail.Save(memoryStream, ImageFormat.Png);
-                    byte[] thumbnailData = memoryStream.ToArray();
-
-                    GokiTagDB.thumbnailIndexStream.Seek(0, SeekOrigin.End);
-                    GokiTagDB.thumbnailStream.Seek(0, SeekOrigin.End);
-
-                    ThumbnailInfo info = new ThumbnailInfo(entry.Location, GokiTagDB.thumbnailIndexStream.Position, GokiTagDB.thumbnailStream.Position, thumbnailData.Length);
-                    byte[] thumbnailInfoData = info.toByteArray();
-                    GokiTagDB.thumbnailIndexStream.Write(info.toByteArray(), 0, thumbnailInfoData.Length);
-                    GokiTagDB.thumbnailStream.Write(thumbnailData, 0, thumbnailData.Length);
-
-                    GokiTagDB.thumbnailInfo.Add(entry.Location, info);
                 }
+            }
+            catch (Exception ex)
+            {
+
+            }
+        }
+
+        public static void clearThumbnailStreams()
+        {
+            try
+            {
+                GokiTagDB.thumbnailStream.Close();
+                GokiTagDB.thumbnailStream.Dispose();
+                File.Delete(GokiTagDB.thumbnailsPath);
+                GokiTagDB.thumbnailStream = new FileStream(GokiTagDB.thumbnailsPath, FileMode.OpenOrCreate, FileAccess.ReadWrite);
+                GokiTagDB.thumbnailIndexStream.Close();
+                GokiTagDB.thumbnailIndexStream.Dispose();
+                GokiTagDB.thumbnailIndexStream = new MemoryStream();
+            }
+            catch(Exception ex)
+            {
+                MessageBox.Show("Error clearing thumbnail database");
             }
         }
     }

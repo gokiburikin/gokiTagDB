@@ -14,7 +14,7 @@
     <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>x86</PlatformTarget>
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>true</Optimize>
@@ -36,6 +36,9 @@
     <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\..\Documents\Programming\json.NET\Net40\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -48,6 +51,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AutoSuggestWindow.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AutoSuggestWindow.Designer.cs">
+      <DependentUpon>AutoSuggestWindow.cs</DependentUpon>
+    </Compile>
     <Compile Include="DBEntry.cs" />
     <Compile Include="EntriesPerPageForm.cs">
       <SubType>Form</SubType>
@@ -71,6 +80,8 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SaveAndLoad.cs" />
+    <Compile Include="SelectionType.cs" />
+    <Compile Include="Settings.cs" />
     <Compile Include="SortTypeEnum.cs" />
     <Compile Include="Tags.cs" />
     <Compile Include="TagEditForm.cs">
@@ -80,6 +91,9 @@
       <DependentUpon>TagEditForm.cs</DependentUpon>
     </Compile>
     <Compile Include="ThumbnailInfo.cs" />
+    <EmbeddedResource Include="AutoSuggestWindow.resx">
+      <DependentUpon>AutoSuggestWindow.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="EntriesPerPageForm.resx">
       <DependentUpon>EntriesPerPageForm.cs</DependentUpon>
     </EmbeddedResource>

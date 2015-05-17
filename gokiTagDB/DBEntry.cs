@@ -13,7 +13,7 @@ namespace gokiTagDB
     {
         private string location;
 
-        public string Location
+        public string FilePath
         {
             get { return location; }
             set { location = value; }
@@ -23,7 +23,7 @@ namespace gokiTagDB
         {
             get
             {
-                return Path.GetExtension(Location);
+                return Path.GetExtension(FilePath);
             }
         }
 
@@ -42,7 +42,7 @@ namespace gokiTagDB
                 DateTime creationDate = DateTime.MinValue;
                 try
                 {
-                    creationDate = new FileInfo(Location).CreationTime;
+                    creationDate = new FileInfo(FilePath).CreationTime;
                 }
                 catch (Exception ex)
                 {
@@ -58,7 +58,7 @@ namespace gokiTagDB
                 DateTime modifiedDate = DateTime.MinValue;
                 try
                 {
-                    modifiedDate = new FileInfo(Location).LastWriteTime;
+                    modifiedDate = new FileInfo(FilePath).LastWriteTime;
                 }
                 catch (Exception ex)
                 {
@@ -117,26 +117,32 @@ namespace gokiTagDB
             set { index = value; }
         }
 
-
         public DBEntry(): this("", ""){}
 
         public DBEntry(string location, string tagString)
         {
-            Location = location;
+            FilePath = location;
             TagString = tagString;
         }
 
         public void generateThumbnail(FileStream thumbnailStream)
         {
-            if (GokiTagDB.thumbnailInfo.ContainsKey(Location))
+            if (GokiTagDB.thumbnailInfo.ContainsKey(FilePath))
             {
-                thumbnailStream.Seek((int)GokiTagDB.thumbnailInfo[Location].ImageIndex, SeekOrigin.Begin);
-                byte[] data = new byte[(int)GokiTagDB.thumbnailInfo[Location].Size];
-                thumbnailStream.Read(data, 0, data.Length);
-                using (MemoryStream stream = new MemoryStream(data))
+                try
                 {
-                    Bitmap bitmap = (Bitmap)Bitmap.FromStream(stream);
-                    thumbnail = bitmap;
+                    thumbnailStream.Seek((int)GokiTagDB.thumbnailInfo[FilePath].ImageIndex, SeekOrigin.Begin);
+                    byte[] data = new byte[(int)GokiTagDB.thumbnailInfo[FilePath].Size];
+                    thumbnailStream.Read(data, 0, data.Length);
+                    using (MemoryStream stream = new MemoryStream(data))
+                    {
+                        Bitmap bitmap = (Bitmap)Bitmap.FromStream(stream);
+                        thumbnail = bitmap;
+                    }
+                }
+                catch(Exception ex)
+                {
+                    GokiTagDB.thumbnailInfo.Remove(FilePath);
                 }
             }
             else if (location != null && File.Exists(location))
@@ -146,8 +152,8 @@ namespace gokiTagDB
                     Image original = Image.FromFile(location);
                     float width = original.Width;
                     float height = original.Height;
-                    float xAspectRatio = width / frmMainForm.thumbnailWidth;
-                    float yAspectRatio = height / frmMainForm.thumbnailHeight;
+                    float xAspectRatio = width / GokiTagDB.settings.ThumbnailWidth;
+                    float yAspectRatio = height / GokiTagDB.settings.ThumbnailHeight;
                     if (xAspectRatio > yAspectRatio)
                     {
                         width /= xAspectRatio;
@@ -180,11 +186,11 @@ namespace gokiTagDB
                 byte[] output = this.md5;
                 if (output == null)
                 {
-                    if (File.Exists(Location))
+                    if (File.Exists(FilePath))
                     {
                         using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
                         {
-                            using (FileStream fileStream = File.OpenRead(Location))
+                            using (FileStream fileStream = File.OpenRead(FilePath))
                             {
                                 output = md5.ComputeHash(fileStream);
                             }
@@ -213,14 +219,14 @@ namespace gokiTagDB
         {
             get
             {
-                return (Location.Length + TagString.Length) * sizeof(char) + sizeof(int) * 2;
+                return (FilePath.Length + TagString.Length) * sizeof(char) + sizeof(int) * 2;
             }
         }
 
         public byte[] toByteArray()
         {
             GokiBytesWriter writer = new GokiBytesWriter(Length);
-            writer.write( Location );
+            writer.write( FilePath );
             writer.write( TagString );
             return writer.data;
         }

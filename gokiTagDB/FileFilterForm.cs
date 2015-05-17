@@ -14,7 +14,7 @@ namespace gokiTagDB
         public frmFileFilter()
         {
             InitializeComponent();
-            txtFilter.Text = GokiTagDB.fileFilter;
+            txtFilter.Text = GokiTagDB.settings.FileFilter;
             btnOk.Click += btnOk_Click;
             btnCancel.Click += btnCancel_Click;
         }
@@ -28,7 +28,7 @@ namespace gokiTagDB
         void btnOk_Click(object sender, EventArgs e)
         {
             DialogResult = System.Windows.Forms.DialogResult.OK;
-            GokiTagDB.fileFilter = txtFilter.Text;
+            GokiTagDB.settings.FileFilter = txtFilter.Text;
             this.Close();
         }
     }

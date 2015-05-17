@@ -5,23 +5,16 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace gokiTagDB
 {
-    public partial class frmEntriesPerPage : Form
+    public partial class frmAutoSuggestWindow : Form
     {
-        public frmEntriesPerPage()
+        public Control suggestionControl;
+        public frmAutoSuggestWindow()
         {
             InitializeComponent();
-            btnCancel.Click += btnCancel_Click;
         }
-
-        void btnCancel_Click(object sender, EventArgs e)
-        {
-            Close();
-        }
-
     }
 }
