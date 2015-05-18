@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainForm));
             this.splitter1 = new System.Windows.Forms.Splitter();
             this.menuStrip1 = new System.Windows.Forms.MenuStrip();
@@ -62,6 +63,7 @@
             this.lblStatus2 = new System.Windows.Forms.ToolStripStatusLabel();
             this.lblStatus3 = new System.Windows.Forms.ToolStripStatusLabel();
             this.lblStatus4 = new System.Windows.Forms.ToolStripStatusLabel();
+            this.lblMemory = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.pnlMain = new System.Windows.Forms.Panel();
             this.pnlThumbnailView = new GokiLibrary.UserInterface.DoubleBufferedPanel();
@@ -78,7 +80,10 @@
             this.btnClear = new System.Windows.Forms.Button();
             this.btnSearch = new System.Windows.Forms.Button();
             this.txtSearch = new System.Windows.Forms.TextBox();
-            this.lblStatus5 = new System.Windows.Forms.ToolStripStatusLabel();
+            this.label1 = new System.Windows.Forms.Label();
+            this.label2 = new System.Windows.Forms.Label();
+            this.lblCpuUsage = new System.Windows.Forms.ToolStripStatusLabel();
+            this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
             this.menuStrip1.SuspendLayout();
             this.statusStrip1.SuspendLayout();
             this.pnlMain.SuspendLayout();
@@ -317,7 +322,8 @@
             this.lblStatus2,
             this.lblStatus3,
             this.lblStatus4,
-            this.lblStatus5});
+            this.lblMemory,
+            this.lblCpuUsage});
             this.statusStrip1.Location = new System.Drawing.Point(0, 715);
             this.statusStrip1.Name = "statusStrip1";
             this.statusStrip1.Size = new System.Drawing.Size(1016, 26);
@@ -358,9 +364,20 @@
             this.lblStatus4.BorderStyle = System.Windows.Forms.Border3DStyle.Etched;
             this.lblStatus4.IsLink = true;
             this.lblStatus4.Name = "lblStatus4";
-            this.lblStatus4.Size = new System.Drawing.Size(410, 21);
+            this.lblStatus4.Size = new System.Drawing.Size(430, 21);
             this.lblStatus4.Spring = true;
             this.lblStatus4.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblStatus4.ToolTipText = "Selected/Hovered file path";
+            // 
+            // lblMemory
+            // 
+            this.lblMemory.AutoSize = false;
+            this.lblMemory.BorderSides = ((System.Windows.Forms.ToolStripStatusLabelBorderSides)((System.Windows.Forms.ToolStripStatusLabelBorderSides.Right | System.Windows.Forms.ToolStripStatusLabelBorderSides.Bottom)));
+            this.lblMemory.BorderStyle = System.Windows.Forms.Border3DStyle.Etched;
+            this.lblMemory.Name = "lblMemory";
+            this.lblMemory.Size = new System.Drawing.Size(100, 21);
+            this.lblMemory.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblMemory.ToolTipText = "Approximate memory usage";
             // 
             // toolStrip1
             // 
@@ -405,11 +422,13 @@
             this.panel3.Controls.Add(this.btnAddTags);
             this.panel3.Controls.Add(this.btnUpdateTags);
             this.panel3.Controls.Add(this.txtTagEditor);
+            this.panel3.Controls.Add(this.label1);
             this.panel3.Controls.Add(this.splitter2);
             this.panel3.Controls.Add(this.pnlTagListContainer);
             this.panel3.Controls.Add(this.btnClear);
             this.panel3.Controls.Add(this.btnSearch);
             this.panel3.Controls.Add(this.txtSearch);
+            this.panel3.Controls.Add(this.label2);
             this.panel3.Dock = System.Windows.Forms.DockStyle.Left;
             this.panel3.Location = new System.Drawing.Point(0, 49);
             this.panel3.Name = "panel3";
@@ -419,50 +438,54 @@
             // btnRemoveTags
             // 
             this.btnRemoveTags.Dock = System.Windows.Forms.DockStyle.Top;
-            this.btnRemoveTags.Location = new System.Drawing.Point(0, 585);
+            this.btnRemoveTags.Location = new System.Drawing.Point(0, 570);
             this.btnRemoveTags.Name = "btnRemoveTags";
             this.btnRemoveTags.Size = new System.Drawing.Size(201, 23);
             this.btnRemoveTags.TabIndex = 11;
             this.btnRemoveTags.TabStop = false;
             this.btnRemoveTags.Text = "&Remove";
+            this.toolTip1.SetToolTip(this.btnRemoveTags, "Remove the tags in the tagging text field from all selected entries");
             this.btnRemoveTags.UseVisualStyleBackColor = true;
             // 
             // btnAddTags
             // 
             this.btnAddTags.Dock = System.Windows.Forms.DockStyle.Top;
-            this.btnAddTags.Location = new System.Drawing.Point(0, 562);
+            this.btnAddTags.Location = new System.Drawing.Point(0, 547);
             this.btnAddTags.Name = "btnAddTags";
             this.btnAddTags.Size = new System.Drawing.Size(201, 23);
             this.btnAddTags.TabIndex = 10;
             this.btnAddTags.TabStop = false;
             this.btnAddTags.Text = "&Add";
+            this.toolTip1.SetToolTip(this.btnAddTags, "Add the tags in the tagging text field to all selected entries");
             this.btnAddTags.UseVisualStyleBackColor = true;
             // 
             // btnUpdateTags
             // 
             this.btnUpdateTags.Dock = System.Windows.Forms.DockStyle.Top;
-            this.btnUpdateTags.Location = new System.Drawing.Point(0, 539);
+            this.btnUpdateTags.Location = new System.Drawing.Point(0, 524);
             this.btnUpdateTags.Name = "btnUpdateTags";
             this.btnUpdateTags.Size = new System.Drawing.Size(201, 23);
             this.btnUpdateTags.TabIndex = 9;
             this.btnUpdateTags.TabStop = false;
             this.btnUpdateTags.Text = "Up&date";
+            this.toolTip1.SetToolTip(this.btnUpdateTags, "Replace tags for selected entries with the tags in the tagging text field");
             this.btnUpdateTags.UseVisualStyleBackColor = true;
             // 
             // txtTagEditor
             // 
             this.txtTagEditor.Dock = System.Windows.Forms.DockStyle.Top;
-            this.txtTagEditor.Location = new System.Drawing.Point(0, 492);
+            this.txtTagEditor.Location = new System.Drawing.Point(0, 477);
             this.txtTagEditor.MaxLength = 32767;
             this.txtTagEditor.Name = "txtTagEditor";
             this.txtTagEditor.Size = new System.Drawing.Size(201, 47);
             this.txtTagEditor.TabIndex = 1;
             this.txtTagEditor.Text = "";
+            this.toolTip1.SetToolTip(this.txtTagEditor, "Enter tags to be manipulated by the actions below");
             // 
             // splitter2
             // 
             this.splitter2.Dock = System.Windows.Forms.DockStyle.Top;
-            this.splitter2.Location = new System.Drawing.Point(0, 489);
+            this.splitter2.Location = new System.Drawing.Point(0, 454);
             this.splitter2.Name = "splitter2";
             this.splitter2.Size = new System.Drawing.Size(201, 3);
             this.splitter2.TabIndex = 15;
@@ -474,9 +497,9 @@
             this.pnlTagListContainer.Controls.Add(this.pnlTagList);
             this.pnlTagListContainer.Controls.Add(this.scrTagListVertical);
             this.pnlTagListContainer.Dock = System.Windows.Forms.DockStyle.Top;
-            this.pnlTagListContainer.Location = new System.Drawing.Point(0, 66);
+            this.pnlTagListContainer.Location = new System.Drawing.Point(0, 86);
             this.pnlTagListContainer.Name = "pnlTagListContainer";
-            this.pnlTagListContainer.Size = new System.Drawing.Size(201, 423);
+            this.pnlTagListContainer.Size = new System.Drawing.Size(201, 368);
             this.pnlTagListContainer.TabIndex = 12;
             // 
             // pnlTagList
@@ -484,7 +507,7 @@
             this.pnlTagList.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pnlTagList.Location = new System.Drawing.Point(0, 0);
             this.pnlTagList.Name = "pnlTagList";
-            this.pnlTagList.Size = new System.Drawing.Size(181, 419);
+            this.pnlTagList.Size = new System.Drawing.Size(181, 364);
             this.pnlTagList.TabIndex = 2;
             this.pnlTagList.TabStop = false;
             // 
@@ -493,48 +516,72 @@
             this.scrTagListVertical.Dock = System.Windows.Forms.DockStyle.Right;
             this.scrTagListVertical.Location = new System.Drawing.Point(181, 0);
             this.scrTagListVertical.Name = "scrTagListVertical";
-            this.scrTagListVertical.Size = new System.Drawing.Size(16, 419);
+            this.scrTagListVertical.Size = new System.Drawing.Size(16, 364);
             this.scrTagListVertical.TabIndex = 3;
             // 
             // btnClear
             // 
             this.btnClear.DialogResult = System.Windows.Forms.DialogResult.Cancel;
             this.btnClear.Dock = System.Windows.Forms.DockStyle.Top;
-            this.btnClear.Location = new System.Drawing.Point(0, 43);
+            this.btnClear.Location = new System.Drawing.Point(0, 63);
             this.btnClear.Name = "btnClear";
             this.btnClear.Size = new System.Drawing.Size(201, 23);
             this.btnClear.TabIndex = 6;
             this.btnClear.TabStop = false;
             this.btnClear.Text = "&Clear";
+            this.toolTip1.SetToolTip(this.btnClear, "Clear the search results and keywords");
             this.btnClear.UseVisualStyleBackColor = true;
             // 
             // btnSearch
             // 
             this.btnSearch.Dock = System.Windows.Forms.DockStyle.Top;
-            this.btnSearch.Location = new System.Drawing.Point(0, 20);
+            this.btnSearch.Location = new System.Drawing.Point(0, 40);
             this.btnSearch.Name = "btnSearch";
             this.btnSearch.Size = new System.Drawing.Size(201, 23);
             this.btnSearch.TabIndex = 5;
             this.btnSearch.TabStop = false;
             this.btnSearch.Text = "&Search";
+            this.toolTip1.SetToolTip(this.btnSearch, "Perform a search using the entered keywords");
             this.btnSearch.UseVisualStyleBackColor = true;
             // 
             // txtSearch
             // 
             this.txtSearch.Dock = System.Windows.Forms.DockStyle.Top;
-            this.txtSearch.Location = new System.Drawing.Point(0, 0);
+            this.txtSearch.Location = new System.Drawing.Point(0, 20);
             this.txtSearch.Name = "txtSearch";
             this.txtSearch.Size = new System.Drawing.Size(201, 20);
             this.txtSearch.TabIndex = 0;
+            this.toolTip1.SetToolTip(this.txtSearch, "Enter search keywords");
             // 
-            // lblStatus5
+            // label1
             // 
-            this.lblStatus5.AutoSize = false;
-            this.lblStatus5.BorderSides = ((System.Windows.Forms.ToolStripStatusLabelBorderSides)((System.Windows.Forms.ToolStripStatusLabelBorderSides.Right | System.Windows.Forms.ToolStripStatusLabelBorderSides.Bottom)));
-            this.lblStatus5.BorderStyle = System.Windows.Forms.Border3DStyle.Etched;
-            this.lblStatus5.Name = "lblStatus5";
-            this.lblStatus5.Size = new System.Drawing.Size(200, 21);
-            this.lblStatus5.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.label1.Dock = System.Windows.Forms.DockStyle.Top;
+            this.label1.Location = new System.Drawing.Point(0, 457);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(201, 20);
+            this.label1.TabIndex = 16;
+            this.label1.Text = "Tagging";
+            this.label1.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // label2
+            // 
+            this.label2.Dock = System.Windows.Forms.DockStyle.Top;
+            this.label2.Location = new System.Drawing.Point(0, 0);
+            this.label2.Name = "label2";
+            this.label2.Size = new System.Drawing.Size(201, 20);
+            this.label2.TabIndex = 17;
+            this.label2.Text = "Search";
+            this.label2.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // lblCpuUsage
+            // 
+            this.lblCpuUsage.AutoSize = false;
+            this.lblCpuUsage.BorderSides = ((System.Windows.Forms.ToolStripStatusLabelBorderSides)((System.Windows.Forms.ToolStripStatusLabelBorderSides.Right | System.Windows.Forms.ToolStripStatusLabelBorderSides.Bottom)));
+            this.lblCpuUsage.BorderStyle = System.Windows.Forms.Border3DStyle.Etched;
+            this.lblCpuUsage.Name = "lblCpuUsage";
+            this.lblCpuUsage.Size = new System.Drawing.Size(80, 21);
+            this.lblCpuUsage.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblCpuUsage.ToolTipText = "Approximate CPU Usage";
             // 
             // frmMainForm
             // 
@@ -617,7 +664,11 @@
         private System.Windows.Forms.ToolStripMenuItem mnuViewUpdateInterval;
         private System.Windows.Forms.ToolStripMenuItem clearThumbnailsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem noneToolStripMenuItem;
-        private System.Windows.Forms.ToolStripStatusLabel lblStatus5;
+        private System.Windows.Forms.ToolStripStatusLabel lblMemory;
+        private System.Windows.Forms.Label label1;
+        private System.Windows.Forms.Label label2;
+        private System.Windows.Forms.ToolStripStatusLabel lblCpuUsage;
+        private System.Windows.Forms.ToolTip toolTip1;
     }
 }
 

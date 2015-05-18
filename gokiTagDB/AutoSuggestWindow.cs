@@ -16,5 +16,12 @@ namespace gokiTagDB
         {
             InitializeComponent();
         }
+        protected override bool ShowWithoutActivation
+        {
+            get
+            {
+                return true;
+            }
+        }
     }
 }

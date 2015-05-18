@@ -76,7 +76,6 @@ namespace gokiTagDB
 
             Move += frmMainForm_Move;
 
-
             foreach( string entry in Enum.GetNames(typeof(SortType)))
             {
                 ToolStripMenuItem sortModeItem = new ToolStripMenuItem(entry);
@@ -119,6 +118,9 @@ namespace gokiTagDB
             pnlTagList.MouseLeave += pnlTagList_MouseLeave;
             pnlTagList.MouseDown += pnlTagList_MouseDown;
             pnlTagList.Resize += pnlTagList_Resize;
+
+            txtSearch.LostFocus += txtSearch_LostFocus;
+            txtTagEditor.LostFocus += txtSearch_LostFocus;
 
             lblStatus4.Click += lblStatus4_Click;
 
@@ -183,6 +185,14 @@ namespace gokiTagDB
 
             updateMenuControls();
             updatePanelScrollbar();
+        }
+
+        void txtSearch_LostFocus(object sender, EventArgs e)
+        {
+            if (autoSuggestWindow.Visible && (!autoSuggestWindow.Focused && !autoSuggestWindow.lstSuggestions.Focused) )
+            {
+                autoSuggestWindow.Hide();
+            }
         }
 
         void frmMainForm_Move(object sender, EventArgs e)
@@ -1047,11 +1057,21 @@ namespace gokiTagDB
                         {
                             return -firstPair.Value.CompareTo(nextPair.Value);
                         });
-                        matches.RemoveRange(10, matches.Count - 10);
+                        if (matches.Count > GokiTagDB.settings.MaximumSuggestions)
+                        {
+                            matches.RemoveRange(GokiTagDB.settings.MaximumSuggestions, matches.Count - GokiTagDB.settings.MaximumSuggestions);
+                        }
 
                         Control control = (Control)sender;
                         Point locationOnForm = control.FindForm().PointToClient(control.Parent.PointToScreen(control.Location));
-                        locationOnForm.Y += Size.Height - ClientSize.Height - calculatedFormBorderSize;
+                        if ( control == txtTagEditor)
+                        {
+                            locationOnForm.Y += Size.Height - ClientSize.Height - calculatedFormBorderSize  - autoSuggestWindow.Height;
+                        }
+                        else
+                        {
+                            locationOnForm.Y += Size.Height - ClientSize.Height - calculatedFormBorderSize + control.Height;
+                        }
                         locationOnForm.X += calculatedFormBorderSize;
                         string message = matches[0].Key + " (" + matches[0].Value + ")";
                         if (matches.Count > 0)
@@ -1065,13 +1085,21 @@ namespace gokiTagDB
                             }
 
                             Point offset = Location;
-                            autoSuggestWindow.Location = new Point(locationOnForm.X + offset.X, locationOnForm.Y + offset.Y + control.Height);
+                            autoSuggestWindow.Location = new Point(locationOnForm.X + offset.X, locationOnForm.Y + offset.Y );
                             autoSuggestWindow.Show();
                             control.Focus();
 
                             autoSuggestEntry = matches[0].Key;
                             isShown = true;
                         }
+                        else
+                        {
+                            autoSuggestWindow.Hide();
+                        }
+                    }
+                    else
+                    {
+                        autoSuggestWindow.Hide();
                     }
                 }
             }
@@ -1173,7 +1201,8 @@ namespace gokiTagDB
             process.Refresh();
             usedMemory = process.PrivateMemorySize64;
             double cpuUsage = performanceCounter.NextValue() / Environment.ProcessorCount;
-            lblStatus5.Text = String.Format("{0:N0}KB - {1:N2}% CPU", usedMemory / 1024f, cpuUsage);
+            lblMemory.Text = String.Format("{0:N0}KB", usedMemory / 1024f);
+            lblCpuUsage.Text = String.Format("{0:N2}%", cpuUsage);
         }
 
         void invalidateTimer_Tick(object sender, EventArgs e)

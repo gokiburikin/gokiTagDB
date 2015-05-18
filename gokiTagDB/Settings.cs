@@ -108,6 +108,14 @@ namespace gokiTagDB
             set { approximateMemoryUsage = value; }
         }
 
+        private int maximumSuggestions;
+
+        public int MaximumSuggestions
+        {
+            get { return maximumSuggestions; }
+            set { maximumSuggestions = value; }
+        }
+
         public Settings()
         {
             FileFilter = @".*(\.jpeg|\.jpg|\.png|\.gif|\.bmp|\.webm)";
@@ -122,7 +130,9 @@ namespace gokiTagDB
             EntryPadding = new Padding(1);
             BorderSize = 1;
             ApproximateMemoryUsage = 100000000;
+            MaximumSuggestions = 10;
         }
+
 
     }
 }
