@@ -66,7 +66,6 @@
             this.lblMemory = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.pnlMain = new System.Windows.Forms.Panel();
-            this.pnlThumbnailView = new GokiLibrary.UserInterface.DoubleBufferedPanel();
             this.scrPanelVertical = new System.Windows.Forms.VScrollBar();
             this.panel3 = new System.Windows.Forms.Panel();
             this.btnRemoveTags = new System.Windows.Forms.Button();
@@ -75,7 +74,6 @@
             this.txtTagEditor = new System.Windows.Forms.RichTextBox();
             this.splitter2 = new System.Windows.Forms.Splitter();
             this.pnlTagListContainer = new System.Windows.Forms.Panel();
-            this.pnlTagList = new GokiLibrary.UserInterface.DoubleBufferedPanel();
             this.scrTagListVertical = new System.Windows.Forms.VScrollBar();
             this.btnClear = new System.Windows.Forms.Button();
             this.btnSearch = new System.Windows.Forms.Button();
@@ -84,6 +82,10 @@
             this.label2 = new System.Windows.Forms.Label();
             this.lblCpuUsage = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
+            this.pnlThumbnailView = new GokiLibrary.UserInterface.DoubleBufferedPanel();
+            this.pnlTagList = new GokiLibrary.UserInterface.DoubleBufferedPanel();
+            this.mnuSettingsThumbnailGeneration = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.menuStrip1.SuspendLayout();
             this.statusStrip1.SuspendLayout();
             this.pnlMain.SuspendLayout();
@@ -252,7 +254,9 @@
             this.mnuSettings.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.mnuSettingsSelectionMode,
             this.mnuSettingsSortMode,
+            this.mnuSettingsThumbnailGeneration,
             this.fileFilterToolStripMenuItem,
+            this.toolStripSeparator1,
             this.clearDatabaseToolStripMenuItem,
             this.clearThumbnailsToolStripMenuItem});
             this.mnuSettings.Name = "mnuSettings";
@@ -265,7 +269,7 @@
             this.mnuSettingsSelectionModeExplorer,
             this.mnuSettingsSelectionModeToggle});
             this.mnuSettingsSelectionMode.Name = "mnuSettingsSelectionMode";
-            this.mnuSettingsSelectionMode.Size = new System.Drawing.Size(167, 22);
+            this.mnuSettingsSelectionMode.Size = new System.Drawing.Size(178, 22);
             this.mnuSettingsSelectionMode.Text = "Selection Mode";
             // 
             // mnuSettingsSelectionModeExplorer
@@ -285,27 +289,27 @@
             // mnuSettingsSortMode
             // 
             this.mnuSettingsSortMode.Name = "mnuSettingsSortMode";
-            this.mnuSettingsSortMode.Size = new System.Drawing.Size(167, 22);
+            this.mnuSettingsSortMode.Size = new System.Drawing.Size(178, 22);
             this.mnuSettingsSortMode.Text = "Sort Mode";
             // 
             // fileFilterToolStripMenuItem
             // 
             this.fileFilterToolStripMenuItem.Name = "fileFilterToolStripMenuItem";
-            this.fileFilterToolStripMenuItem.Size = new System.Drawing.Size(167, 22);
+            this.fileFilterToolStripMenuItem.Size = new System.Drawing.Size(178, 22);
             this.fileFilterToolStripMenuItem.Text = "File Filter...";
             this.fileFilterToolStripMenuItem.Click += new System.EventHandler(this.fileFilterToolStripMenuItem_Click);
             // 
             // clearDatabaseToolStripMenuItem
             // 
             this.clearDatabaseToolStripMenuItem.Name = "clearDatabaseToolStripMenuItem";
-            this.clearDatabaseToolStripMenuItem.Size = new System.Drawing.Size(167, 22);
+            this.clearDatabaseToolStripMenuItem.Size = new System.Drawing.Size(178, 22);
             this.clearDatabaseToolStripMenuItem.Text = "Clear Database...";
             this.clearDatabaseToolStripMenuItem.Click += new System.EventHandler(this.clearDatabaseToolStripMenuItem_Click);
             // 
             // clearThumbnailsToolStripMenuItem
             // 
             this.clearThumbnailsToolStripMenuItem.Name = "clearThumbnailsToolStripMenuItem";
-            this.clearThumbnailsToolStripMenuItem.Size = new System.Drawing.Size(167, 22);
+            this.clearThumbnailsToolStripMenuItem.Size = new System.Drawing.Size(178, 22);
             this.clearThumbnailsToolStripMenuItem.Text = "Clear Thumbnails...";
             this.clearThumbnailsToolStripMenuItem.Click += new System.EventHandler(this.clearThumbnailsToolStripMenuItem_Click);
             // 
@@ -364,7 +368,7 @@
             this.lblStatus4.BorderStyle = System.Windows.Forms.Border3DStyle.Etched;
             this.lblStatus4.IsLink = true;
             this.lblStatus4.Name = "lblStatus4";
-            this.lblStatus4.Size = new System.Drawing.Size(430, 21);
+            this.lblStatus4.Size = new System.Drawing.Size(461, 21);
             this.lblStatus4.Spring = true;
             this.lblStatus4.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.lblStatus4.ToolTipText = "Selected/Hovered file path";
@@ -397,16 +401,6 @@
             this.pnlMain.Name = "pnlMain";
             this.pnlMain.Size = new System.Drawing.Size(812, 666);
             this.pnlMain.TabIndex = 3;
-            // 
-            // pnlThumbnailView
-            // 
-            this.pnlThumbnailView.BackColor = System.Drawing.Color.White;
-            this.pnlThumbnailView.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.pnlThumbnailView.Location = new System.Drawing.Point(0, 0);
-            this.pnlThumbnailView.Name = "pnlThumbnailView";
-            this.pnlThumbnailView.Size = new System.Drawing.Size(796, 666);
-            this.pnlThumbnailView.TabIndex = 4;
-            this.pnlThumbnailView.TabStop = false;
             // 
             // scrPanelVertical
             // 
@@ -502,15 +496,6 @@
             this.pnlTagListContainer.Size = new System.Drawing.Size(201, 368);
             this.pnlTagListContainer.TabIndex = 12;
             // 
-            // pnlTagList
-            // 
-            this.pnlTagList.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.pnlTagList.Location = new System.Drawing.Point(0, 0);
-            this.pnlTagList.Name = "pnlTagList";
-            this.pnlTagList.Size = new System.Drawing.Size(181, 364);
-            this.pnlTagList.TabIndex = 2;
-            this.pnlTagList.TabStop = false;
-            // 
             // scrTagListVertical
             // 
             this.scrTagListVertical.Dock = System.Windows.Forms.DockStyle.Right;
@@ -582,6 +567,36 @@
             this.lblCpuUsage.Size = new System.Drawing.Size(80, 21);
             this.lblCpuUsage.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.lblCpuUsage.ToolTipText = "Approximate CPU Usage";
+            // 
+            // pnlThumbnailView
+            // 
+            this.pnlThumbnailView.BackColor = System.Drawing.Color.White;
+            this.pnlThumbnailView.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.pnlThumbnailView.Location = new System.Drawing.Point(0, 0);
+            this.pnlThumbnailView.Name = "pnlThumbnailView";
+            this.pnlThumbnailView.Size = new System.Drawing.Size(796, 666);
+            this.pnlThumbnailView.TabIndex = 4;
+            this.pnlThumbnailView.TabStop = false;
+            // 
+            // pnlTagList
+            // 
+            this.pnlTagList.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.pnlTagList.Location = new System.Drawing.Point(0, 0);
+            this.pnlTagList.Name = "pnlTagList";
+            this.pnlTagList.Size = new System.Drawing.Size(181, 364);
+            this.pnlTagList.TabIndex = 2;
+            this.pnlTagList.TabStop = false;
+            // 
+            // mnuSettingsThumbnailGeneration
+            // 
+            this.mnuSettingsThumbnailGeneration.Name = "mnuSettingsThumbnailGeneration";
+            this.mnuSettingsThumbnailGeneration.Size = new System.Drawing.Size(178, 22);
+            this.mnuSettingsThumbnailGeneration.Text = "Thumbnail Generation";
+            // 
+            // toolStripSeparator1
+            // 
+            this.toolStripSeparator1.Name = "toolStripSeparator1";
+            this.toolStripSeparator1.Size = new System.Drawing.Size(175, 6);
             // 
             // frmMainForm
             // 
@@ -669,6 +684,8 @@
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.ToolStripStatusLabel lblCpuUsage;
         private System.Windows.Forms.ToolTip toolTip1;
+        private System.Windows.Forms.ToolStripMenuItem mnuSettingsThumbnailGeneration;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
     }
 }
 

@@ -83,6 +83,13 @@ namespace gokiTagDB
                 mnuSettingsSortMode.DropDownItems.Add(sortModeItem);
             }
 
+            foreach (string entry in Enum.GetNames(typeof(ThumbnailGenerationMethod)))
+            {
+                ToolStripMenuItem thumbnailGenerationItem = new ToolStripMenuItem(entry);
+                thumbnailGenerationItem.Click += thumbnailGenerationItem_Click;
+                mnuSettingsThumbnailGeneration.DropDownItems.Add(thumbnailGenerationItem);
+            }
+
             foreach( int updateInterval in Settings.updateIntervals)
             {
                 ToolStripMenuItem dropdownItem = new ToolStripMenuItem(updateInterval + "ms");
@@ -98,6 +105,7 @@ namespace gokiTagDB
                 zoomLevelItem.Click += zoomLevelItem_Click;
                 mnuViewZoom.DropDownItems.Add(zoomLevelItem);
             }
+
 
             btnSearch.Click += btnSearch_Click;
             btnClear.Click += btnClear_Click;
@@ -158,9 +166,8 @@ namespace gokiTagDB
                 isGenerationThreaded = false;
             }
 
-            invalidateTimer.Interval = GokiTagDB.settings.UpdateInterval;
             invalidateTimer.Tick += invalidateTimer_Tick;
-            invalidateTimer.Start();
+            changeUpdateInterval(GokiTagDB.settings.UpdateInterval);
 
             processTimer.Interval = 3000;
             processTimer.Tick += processTimer_Tick;
@@ -185,6 +192,13 @@ namespace gokiTagDB
 
             updateMenuControls();
             updatePanelScrollbar();
+        }
+
+        void thumbnailGenerationItem_Click(object sender, EventArgs e)
+        {
+            string entry = ((ToolStripMenuItem)sender).Text;
+            GokiTagDB.settings.ThumbnailGenerationMethod = (ThumbnailGenerationMethod)Enum.Parse(typeof(ThumbnailGenerationMethod), entry);
+            updateMenuControls();
         }
 
         void txtSearch_LostFocus(object sender, EventArgs e)
@@ -255,7 +269,7 @@ namespace gokiTagDB
 
         void dropdownItem_Click(object sender, EventArgs e)
         {
-            GokiTagDB.settings.UpdateInterval = (int)((ToolStripMenuItem)sender).Tag;
+            changeUpdateInterval((int)((ToolStripMenuItem)sender).Tag);
             updateMenuControls();
         }
 
@@ -1205,17 +1219,22 @@ namespace gokiTagDB
             lblCpuUsage.Text = String.Format("{0:N2}%", cpuUsage);
         }
 
-        void invalidateTimer_Tick(object sender, EventArgs e)
+        void changeUpdateInterval( int interval)
         {
             invalidateTimer.Stop();
+            GokiTagDB.settings.UpdateInterval = interval;
+            invalidateTimer.Interval = GokiTagDB.settings.UpdateInterval;
+            invalidateTimer.Start();
+        }
+
+        void invalidateTimer_Tick(object sender, EventArgs e)
+        {
             if ( thumbnailPanelDirty )
             {
                 pnlThumbnailView.Invalidate();
                 thumbnailPanelDirty = false;
                 lblStatus2.Text = String.Format("{0:N0} thumbnails in queue", thumbnailGenerationQueue.Count);
             }
-            invalidateTimer.Interval = GokiTagDB.settings.UpdateInterval;
-            invalidateTimer.Start();
         }
 
         void queueRedraw()
@@ -1289,6 +1308,18 @@ namespace gokiTagDB
             {
                 SortType sortType = (SortType)Enum.Parse(typeof(gokiTagDB.SortType), dropDownItem.Text);
                 if (sortType == GokiTagDB.settings.SortType)
+                {
+                    dropDownItem.Checked = true;
+                }
+                else
+                {
+                    dropDownItem.Checked = false;
+                }
+            }
+            foreach (ToolStripMenuItem dropDownItem in mnuSettingsThumbnailGeneration.DropDownItems)
+            {
+                ThumbnailGenerationMethod sortType = (ThumbnailGenerationMethod)Enum.Parse(typeof(gokiTagDB.ThumbnailGenerationMethod), dropDownItem.Text);
+                if (sortType == GokiTagDB.settings.ThumbnailGenerationMethod)
                 {
                     dropDownItem.Checked = true;
                 }
@@ -2006,7 +2037,6 @@ namespace gokiTagDB
                 }
                 SaveAndLoad.clearThumbnailStreams();
                 SaveAndLoad.saveThumbnails();
-                search("");
             }
         }
 

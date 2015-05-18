@@ -270,7 +270,36 @@ namespace gokiTagDB
                         {
                             entry.generateThumbnail(GokiTagDB.thumbnailStream);
                         }
-                        entry.Thumbnail.Save(memoryStream, ImageFormat.Jpeg);
+                        if (GokiTagDB.settings.ThumbnailGenerationMethod == ThumbnailGenerationMethod.PNG)
+                        {
+                            entry.Thumbnail.Save(memoryStream, ImageFormat.Png);
+                        }
+                        else if (GokiTagDB.settings.ThumbnailGenerationMethod == ThumbnailGenerationMethod.Auto)
+                        {
+                            if ( entry.FileExtension.ToLower() == ".png" ||  entry.FileExtension.ToLower() == ".gif")
+                            {
+                                entry.Thumbnail.Save(memoryStream, ImageFormat.Png);
+                            }
+                            else
+                            {
+                                entry.Thumbnail.Save(memoryStream, ImageFormat.Jpeg);
+                            }
+                        }
+                        else if (GokiTagDB.settings.ThumbnailGenerationMethod == ThumbnailGenerationMethod.Smart)
+                        {
+                            if ( GokiPixels.usesAlpha(entry.Thumbnail))
+                            {
+                                entry.Thumbnail.Save(memoryStream, ImageFormat.Png);
+                            }
+                            else
+                            {
+                                entry.Thumbnail.Save(memoryStream, ImageFormat.Jpeg);
+                            }
+                        }
+                        else 
+                        {
+                            entry.Thumbnail.Save(memoryStream, ImageFormat.Jpeg);
+                        }
                         byte[] thumbnailData = memoryStream.ToArray();
 
                         GokiTagDB.thumbnailIndexStream.Seek(0, SeekOrigin.End);

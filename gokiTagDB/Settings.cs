@@ -116,6 +116,14 @@ namespace gokiTagDB
             set { maximumSuggestions = value; }
         }
 
+        private ThumbnailGenerationMethod thumbnailGenerationMethod;
+
+        public ThumbnailGenerationMethod ThumbnailGenerationMethod
+        {
+            get { return thumbnailGenerationMethod; }
+            set { thumbnailGenerationMethod = value; }
+        }
+
         public Settings()
         {
             FileFilter = @".*(\.jpeg|\.jpg|\.png|\.gif|\.bmp|\.webm)";
@@ -131,6 +139,7 @@ namespace gokiTagDB
             BorderSize = 1;
             ApproximateMemoryUsage = 100000000;
             MaximumSuggestions = 10;
+            ThumbnailGenerationMethod = gokiTagDB.ThumbnailGenerationMethod.Smart;
         }
 
 

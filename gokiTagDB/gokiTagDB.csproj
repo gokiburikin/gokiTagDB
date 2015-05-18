@@ -90,6 +90,7 @@
     <Compile Include="TagEditForm.Designer.cs">
       <DependentUpon>TagEditForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="ThumbnailGenerationMethod.cs" />
     <Compile Include="ThumbnailInfo.cs" />
     <EmbeddedResource Include="AutoSuggestWindow.resx">
       <DependentUpon>AutoSuggestWindow.cs</DependentUpon>
